@@ -1,0 +1,88 @@
+{
+  "uid": "reporting-trending",
+  "title": "Trending",
+  "tags": ["reporting-output"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Top 10 Series by Views (last 10 min)",
+      "description": "watch events in a rolling last-10-minutes window, computed by the trending-rankings job over reporting-db.watch_events.",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT r.rank, r.item_id, i.title, r.view_count FROM item_view_ranking r JOIN items i ON i.item_id = r.item_id WHERE r.type = 'series' ORDER BY r.rank",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Top 10 Movies by Views (last 10 min)",
+      "description": "watch events in a rolling last-10-minutes window, computed by the trending-rankings job over reporting-db.watch_events.",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT r.rank, r.item_id, i.title, r.view_count FROM item_view_ranking r JOIN items i ON i.item_id = r.item_id WHERE r.type = 'movie' ORDER BY r.rank",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Top 10 Series by Rating (last 10 min)",
+      "description": "rating events (latest per user+item, given within the window) in a rolling last-10-minutes window, computed by the trending-rankings job over reporting-db.ratings.",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT r.rank, r.item_id, i.title, r.avg_rating, r.rating_count FROM item_rating_ranking r JOIN items i ON i.item_id = r.item_id WHERE r.type = 'series' ORDER BY r.rank",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Top 10 Movies by Rating (last 10 min)",
+      "description": "rating events (latest per user+item, given within the window) in a rolling last-10-minutes window, computed by the trending-rankings job over reporting-db.ratings.",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT r.rank, r.item_id, i.title, r.avg_rating, r.rating_count FROM item_rating_ranking r JOIN items i ON i.item_id = r.item_id WHERE r.type = 'movie' ORDER BY r.rank",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "uid": "reporting-summary",
+  "title": "Summary",
+  "tags": ["reporting-output"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total Items",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT count(*) AS total_items FROM items",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total Users",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT count(*) AS total_users FROM users",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Overall Average Rating",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT round(avg(r.avg_rating)::numeric, 2) AS overall_avg_rating FROM user_rating_avg r JOIN users u ON u.user_id = r.user_id",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Users With a Rating",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT count(*) AS users_with_rating FROM user_rating_avg r JOIN users u ON u.user_id = r.user_id",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "barchart",
+      "title": "Items by Type",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT type, count(*) AS item_count FROM items GROUP BY type ORDER BY item_count DESC",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "orientation": "horizontal" }
+    },
+    {
+      "id": 6,
+      "type": "barchart",
+      "title": "Users by Subscription Plan",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT subscription_plan, count(*) AS user_count FROM users GROUP BY subscription_plan ORDER BY user_count DESC",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "orientation": "horizontal" }
+    }
+  ]
+}

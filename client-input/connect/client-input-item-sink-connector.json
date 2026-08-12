@@ -1,0 +1,25 @@
+{
+  "name": "client-input-item-sink-connector",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "topics": "de.iu.Item.V001",
+    "connection.url": "jdbc:mysql://client-input-db:3306/client_input?useSSL=false&allowPublicKeyRetrieval=true",
+    "connection.user": "client_input",
+    "connection.password": "client_input",
+    "table.name.format": "items",
+
+    "key.converter": "io.confluent.connect.avro.AvroConverter",
+    "key.converter.schema.registry.url": "http://schema-registry:8081",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+
+    "fields.whitelist": "type,runtime_minutes,catalog_status",
+
+    "auto.create": "true",
+    "auto.evolve": "false",
+    "insert.mode": "upsert",
+    "pk.mode": "record_key",
+    "pk.fields": "item_id",
+    "delete.enabled": "true"
+  }
+}

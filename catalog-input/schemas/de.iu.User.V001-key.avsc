@@ -1,0 +1,12 @@
+﻿{
+    "type":  "record",
+    "name":  "Key",
+    "namespace":  "cdc.catalog.public.app_user",
+    "fields":  [
+                   {
+                       "name":  "user_id",
+                       "type":  "string"
+                   }
+               ],
+    "connect.name":  "cdc.catalog.public.app_user.Key"
+}

@@ -1,0 +1,12 @@
+{
+    "type": "record",
+    "name": "ItemFinishedEvent",
+    "namespace": "de.iu",
+    "fields": [
+        {"name": "user_id", "type": "string"},
+        {"name": "item_id", "type": "string"},
+        {"name": "watched_seconds", "type": "int"},
+        {"name": "device_type", "type": "string"},
+        {"name": "session_ended_at", "type": {"type": "long", "logicalType": "timestamp-millis"}}
+    ]
+}

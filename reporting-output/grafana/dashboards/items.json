@@ -1,0 +1,118 @@
+{
+  "uid": "reporting-items",
+  "title": "Items",
+  "tags": ["reporting-output"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 4,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "item_id",
+        "label": "Item",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "reporting-db" },
+        "query": "SELECT 'All' AS __text, '' AS __value UNION ALL SELECT item_id AS __text, item_id AS __value FROM items ORDER BY __text",
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": { "text": "All", "value": "" }
+      },
+      {
+        "name": "item_type",
+        "label": "Item Type",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "reporting-db" },
+        "query": "SELECT 'All' AS __text, '' AS __value UNION ALL SELECT DISTINCT type AS __text, type AS __value FROM items ORDER BY __text",
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": { "text": "All", "value": "" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Items ($item_type)",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT count(*) AS item_count FROM items WHERE (${item_type:sqlstring} = '' OR type = ${item_type:sqlstring})",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Item Detail ($item_id, $item_type)",
+      "description": "Filtered by the Item and Item Type pickers above - shows every item when both are \"All\". avg_rating/rating_count/completion_rate/watch_count/average_age/pct_male/pct_female/pct_other/pct_unknown/viewer_count are NULL for an item missing the underlying activity (no ratings, no watches). pct_male/pct_female/pct_other/pct_unknown always sum to 1.0 when present (item-viewer-demographics, distinct viewers - see its README).",
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT i.item_id, i.type, i.title, i.release_year, i.genre_primary, i.genre_secondary, i.content_rating, i.imdb_score, i.is_netflix_original, i.catalog_status, r.avg_rating, r.rating_count, c.completion_rate, c.watch_count, d.average_age, d.pct_male, d.pct_female, d.pct_other, d.pct_unknown, d.viewer_count FROM items i LEFT JOIN item_rating_avg r ON r.item_id = i.item_id LEFT JOIN item_completion_rate c ON c.item_id = i.item_id LEFT JOIN item_viewer_demographics d ON d.item_id = i.item_id WHERE (${item_id:sqlstring} = '' OR i.item_id = ${item_id:sqlstring}) AND (${item_type:sqlstring} = '' OR i.type = ${item_type:sqlstring}) ORDER BY i.item_id LIMIT 200",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Avg Completion Rate ($item_type)",
+      "description": "Average, across matching items, of each item's own completion_rate (fraction of that item's watches that reached the 85% watched_seconds/duration_seconds threshold). Computed by the item-completion-rate job over reporting-db.watch_events, all-time - only counts items with at least one watch. Per-item completion_rate/watch_count live on Item Detail above, not a separate table - it duplicated Item Detail with no extra filtering that view didn't already offer.",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT round((avg(c.completion_rate) * 100)::numeric, 1) AS avg_completion_pct FROM item_completion_rate c JOIN items i ON i.item_id = c.item_id WHERE (${item_type:sqlstring} = '' OR i.type = ${item_type:sqlstring})",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "percent", "max": 100, "min": 0 },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Avg Rating ($item_type)",
+      "description": "Average, across matching items, of each item's own avg_rating (item-rating-avg, all-time mean of every rating that item has received - the item-side mirror of the Users dashboard's Average Rating panel). Only counts items with at least one rating. Per-item avg_rating/rating_count live on Item Detail above, not a separate table.",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT round(avg(r.avg_rating)::numeric, 2) AS avg_rating FROM item_rating_avg r JOIN items i ON i.item_id = r.item_id WHERE (${item_type:sqlstring} = '' OR i.type = ${item_type:sqlstring})",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] }
+    }
+  ]
+}

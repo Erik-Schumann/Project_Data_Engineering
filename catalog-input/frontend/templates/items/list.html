@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Items — Catalog Admin{% endblock %}
+
+{% macro sort_th(label, column) %}
+  {% set next_dir = "desc" if sort == column and direction == "asc" else "asc" %}
+  <th>
+    <a href="{{ url_for('items_list', id=id_filter, genre=genre_filter, type=type_filter, status=status_filter, sort=column, dir=next_dir) }}"
+       class="text-decoration-none text-reset">
+      {{ label }}
+      {% if sort == column %}<i class="bi bi-caret-{{ 'up' if direction == 'asc' else 'down' }}-fill small"></i>{% endif %}
+    </a>
+  </th>
+{% endmacro %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+  <h1 class="h2"><i class="bi bi-film me-2"></i>Items</h1>
+  <div class="d-flex gap-2">
+    <form method="post" action="{{ url_for('items_random') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-outline-secondary" title="Insert one synthetic item with randomized fields, no form">
+        <i class="bi bi-shuffle me-1"></i> Random item
+      </button>
+    </form>
+    <a href="{{ url_for('items_new') }}" class="btn btn-primary">
+      <i class="bi bi-plus-lg me-1"></i> Add item
+    </a>
+  </div>
+</div>
+
+<form method="get" class="row g-2 mb-3 align-items-end">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ direction }}">
+  <div class="col-auto">
+    <label class="form-label small mb-0 text-muted">ID contains</label>
+    <input type="text" name="id" value="{{ id_filter }}" class="form-control form-control-sm" placeholder="e.g. i5" style="width: 8rem;">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-0 text-muted">Genre</label>
+    <select name="genre" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">All genres</option>
+      {% for g in all_genres %}
+        <option value="{{ g.name }}" {% if g.name == genre_filter %}selected{% endif %}>{{ g.name }} ({{ genre_counts.get(g.name, 0) }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-0 text-muted">Type</label>
+    <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">All types</option>
+      {% for t in item_types %}
+        <option value="{{ t }}" {% if t == type_filter %}selected{% endif %}>{{ t }} ({{ type_counts.get(t, 0) }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-0 text-muted">Status</label>
+    <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">All statuses</option>
+      {% for s in catalog_statuses %}
+        <option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s }} ({{ status_counts.get(s, 0) }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+    {% if id_filter or genre_filter or type_filter or status_filter %}
+      <a href="{{ url_for('items_list') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-x-circle me-1"></i>Clear filters
+      </a>
+    {% endif %}
+  </div>
+</form>
+
+{% if not items %}
+  {% if id_filter or genre_filter or type_filter or status_filter %}
+    <p class="text-muted">No items match this filter. <a href="{{ url_for('items_list') }}">Clear filters.</a></p>
+  {% else %}
+    <p class="text-muted">No items yet. <a href="{{ url_for('items_new') }}">Add the first one.</a></p>
+  {% endif %}
+{% else %}
+<form method="post" action="{{ url_for('items_bulk_delete') }}" id="bulk-delete-form" class="mb-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div id="bulk-delete-ids"></div>
+  <button type="submit" id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" disabled>
+    <i class="bi bi-trash me-1"></i>Delete selected
+  </button>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-striped table-hover align-middle">
+    <thead>
+      <tr>
+        <th><input type="checkbox" class="form-check-input" id="select-all"></th>
+        {{ sort_th("ID", "item_id") }}
+        {{ sort_th("Title", "title") }}
+        {{ sort_th("Type", "type") }}
+        {{ sort_th("Year", "release_year") }}
+        {{ sort_th("Country", "country") }}
+        {{ sort_th("Rating", "content_rating") }}
+        {{ sort_th("IMDB", "imdb_score") }}
+        {{ sort_th("Genres", "genre_primary") }}
+        {{ sort_th("Status", "catalog_status") }}
+        <th class="text-end">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td><input type="checkbox" class="form-check-input row-check" value="{{ item.item_id }}"></td>
+        <td><code>{{ item.item_id }}</code></td>
+        <td>{{ item.title }}</td>
+        <td><span class="badge text-bg-secondary">{{ item.type }}</span></td>
+        <td>{{ item.release_year or "—" }}</td>
+        <td>{{ item.country or "—" }} / {{ item.original_language or "—" }}</td>
+        <td>{{ item.content_rating or "—" }}</td>
+        <td>{% if item.imdb_score %}{{ item.imdb_score }} <i class="bi bi-star-fill text-warning"></i>{% else %}—{% endif %}</td>
+        <td>
+          {% if item.genre_primary %}
+            <span class="badge text-bg-light border me-1">{{ item.genre_primary }}</span>
+          {% endif %}
+          {% if item.genre_secondary %}
+            <span class="badge text-bg-light border me-1">{{ item.genre_secondary }}</span>
+          {% endif %}
+          {% if not item.genre_primary and not item.genre_secondary %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% set status_color = {"active": "success", "coming_soon": "info", "archived": "secondary"} %}
+          <span class="badge text-bg-{{ status_color.get(item.catalog_status, 'secondary') }}">{{ item.catalog_status }}</span>
+        </td>
+        <td class="text-end">
+          <a href="{{ url_for('items_edit', item_id=item.item_id) }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-pencil"></i>
+          </a>
+          <form method="post" action="{{ url_for('items_delete', item_id=item.item_id) }}" class="d-inline"
+                onsubmit="return confirm('Delete \'{{ item.title }}\'?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+(function () {
+  var selectAll = document.getElementById("select-all");
+  var bulkForm = document.getElementById("bulk-delete-form");
+  var bulkBtn = document.getElementById("bulk-delete-btn");
+  var idsContainer = document.getElementById("bulk-delete-ids");
+  function rowChecks() { return document.querySelectorAll(".row-check"); }
+  function updateBtn() {
+    var n = document.querySelectorAll(".row-check:checked").length;
+    bulkBtn.disabled = n === 0;
+    bulkBtn.innerHTML = '<i class="bi bi-trash me-1"></i>Delete selected' + (n > 0 ? " (" + n + ")" : "");
+  }
+  selectAll.addEventListener("change", function () {
+    rowChecks().forEach(function (cb) { cb.checked = selectAll.checked; });
+    updateBtn();
+  });
+  rowChecks().forEach(function (cb) { cb.addEventListener("change", updateBtn); });
+  bulkForm.addEventListener("submit", function (e) {
+    var checked = Array.prototype.slice.call(document.querySelectorAll(".row-check:checked"));
+    if (checked.length === 0) { e.preventDefault(); return; }
+    if (!confirm("Delete " + checked.length + " selected item(s)? This cannot be undone.")) {
+      e.preventDefault();
+      return;
+    }
+    idsContainer.innerHTML = "";
+    checked.forEach(function (cb) {
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "selected_ids";
+      input.value = cb.value;
+      idsContainer.appendChild(input);
+    });
+  });
+  updateBtn();
+})();
+</script>
+{% endif %}
+{% endblock %}

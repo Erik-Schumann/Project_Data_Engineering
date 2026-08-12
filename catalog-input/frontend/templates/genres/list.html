@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Genres — Catalog Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center pt-3 pb-2 mb-3 border-bottom">
+  <h1 class="h2"><i class="bi bi-tags me-2"></i>Genres</h1>
+  <a href="{{ url_for('genres_new') }}" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-1"></i> Add genre
+  </a>
+</div>
+
+{% if not genres %}
+  <p class="text-muted">No genres yet. <a href="{{ url_for('genres_new') }}">Add the first one.</a></p>
+{% else %}
+<form method="post" action="{{ url_for('genres_bulk_delete') }}" id="bulk-delete-form" class="mb-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div id="bulk-delete-ids"></div>
+  <button type="submit" id="bulk-delete-btn" class="btn btn-outline-danger btn-sm" disabled>
+    <i class="bi bi-trash me-1"></i>Delete selected
+  </button>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-striped table-hover align-middle">
+    <thead>
+      <tr>
+        <th><input type="checkbox" class="form-check-input" id="select-all"></th>
+        <th>Name</th>
+        <th>Items using it</th>
+        <th class="text-end">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for genre in genres %}
+      <tr>
+        <td><input type="checkbox" class="form-check-input row-check" value="{{ genre.name }}"></td>
+        <td>{{ genre.name }}</td>
+        <td>{{ genre.item_count }}</td>
+        <td class="text-end">
+          <form method="post" action="{{ url_for('genres_delete', name=genre.name) }}" class="d-inline"
+                onsubmit="return confirm('Delete genre {{ genre.name }}? Items using it will have this genre field cleared.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+(function () {
+  var selectAll = document.getElementById("select-all");
+  var bulkForm = document.getElementById("bulk-delete-form");
+  var bulkBtn = document.getElementById("bulk-delete-btn");
+  var idsContainer = document.getElementById("bulk-delete-ids");
+  function rowChecks() { return document.querySelectorAll(".row-check"); }
+  function updateBtn() {
+    var n = document.querySelectorAll(".row-check:checked").length;
+    bulkBtn.disabled = n === 0;
+    bulkBtn.innerHTML = '<i class="bi bi-trash me-1"></i>Delete selected' + (n > 0 ? " (" + n + ")" : "");
+  }
+  selectAll.addEventListener("change", function () {
+    rowChecks().forEach(function (cb) { cb.checked = selectAll.checked; });
+    updateBtn();
+  });
+  rowChecks().forEach(function (cb) { cb.addEventListener("change", updateBtn); });
+  bulkForm.addEventListener("submit", function (e) {
+    var checked = Array.prototype.slice.call(document.querySelectorAll(".row-check:checked"));
+    if (checked.length === 0) { e.preventDefault(); return; }
+    if (!confirm("Delete " + checked.length + " selected genre(s)? Items using them will have this genre field cleared. This cannot be undone.")) {
+      e.preventDefault();
+      return;
+    }
+    idsContainer.innerHTML = "";
+    checked.forEach(function (cb) {
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "selected_names";
+      input.value = cb.value;
+      idsContainer.appendChild(input);
+    });
+  });
+  updateBtn();
+})();
+</script>
+{% endif %}
+{% endblock %}

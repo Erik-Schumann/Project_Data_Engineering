@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Client Input Service</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root {
+      --brand-1: #6d28d9;
+      --brand-2: #2563eb;
+    }
+    body { background: #f4f5f9; }
+    .navbar-brand-gradient {
+      background: linear-gradient(135deg, var(--brand-1), var(--brand-2));
+    }
+    .live-dot {
+      display: inline-block; width: .5rem; height: .5rem; border-radius: 50%;
+      background: #22c55e; box-shadow: 0 0 0 rgba(34,197,94,.6);
+      animation: pulse 1.8s infinite;
+    }
+    .live-dot.paused { background: #ef4444; animation: none; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(34,197,94,.5); }
+      70% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+    .stat-card {
+      border: 0; border-radius: .75rem; box-shadow: 0 1px 3px rgba(15,23,42,.08);
+      transition: box-shadow .15s ease, transform .15s ease;
+    }
+    .stat-card:hover { box-shadow: 0 6px 16px rgba(15,23,42,.1); transform: translateY(-1px); }
+    .stat-value { transition: color .3s ease; }
+    .stat-value.bump { color: var(--brand-2); }
+    .card { border: 0; border-radius: .75rem; box-shadow: 0 1px 3px rgba(15,23,42,.06); }
+    .table-card { padding: 1rem 1.25rem; }
+    code.id-pill {
+      background: #eef0f7; padding: .1rem .4rem; border-radius: .35rem; font-size: .8em;
+    }
+    .progress { height: .5rem; border-radius: 1rem; }
+    .device-bar-row { display: flex; align-items: center; gap: .6rem; margin-bottom: .5rem; }
+    .device-bar-label { width: 7.5rem; font-size: .82rem; color: #475569; text-transform: capitalize; }
+    .device-bar-track { flex: 1; background: #eef0f7; border-radius: 1rem; height: .55rem; overflow: hidden; }
+    .device-bar-fill { height: 100%; background: linear-gradient(90deg, var(--brand-2), var(--brand-1)); border-radius: 1rem; }
+    .device-bar-count { width: 2.5rem; text-align: right; font-size: .8rem; color: #64748b; }
+    .table-hover tbody tr.row-flash { animation: flash-row 1.2s ease; }
+    @keyframes flash-row { from { background-color: #eef2ff; } to { background-color: transparent; } }
+    .empty-state { padding: 2.5rem 1rem; text-align: center; color: #94a3b8; }
+    .empty-state i { font-size: 1.8rem; display: block; margin-bottom: .4rem; }
+    th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    th.sortable:hover { color: var(--brand-2); }
+    th.sortable .bi { font-size: .7rem; opacity: .35; margin-left: .15rem; }
+    th.sortable.sort-active .bi { opacity: 1; }
+    tr.row-selected { background-color: #eef2ff; }
+  </style>
+</head>
+<body>
+  <header class="navbar navbar-dark sticky-top navbar-brand-gradient flex-md-nowrap p-0 shadow">
+    <span class="navbar-brand col-md-3 col-lg-2 me-0 px-3 fs-6 text-white">
+      <i class="bi bi-broadcast me-1"></i> Client Input Service
+    </span>
+    <div class="navbar-nav flex-row d-md-flex ms-auto align-items-center">
+      <span class="text-white-50 small me-3 d-none d-sm-inline">
+        <span id="liveDot" class="live-dot {{ 'paused' if paused else '' }}"></span>
+        <span id="liveLabel">{{ 'paused' if paused else 'live' }}</span>
+      </span>
+      <div class="nav-item text-nowrap px-3">
+        <form method="post" action="{{ url_for('logout') }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-outline-light">
+            <i class="bi bi-box-arrow-right"></i> Sign out
+          </button>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <main class="container-fluid px-md-4 py-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div id="flashArea">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'danger' if category == 'danger' else category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h4 class="mb-0">Generator status</h4>
+      <form method="post" action="{{ url_for('resume' if paused else 'pause') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if paused %}
+          <button type="submit" class="btn btn-success"><i class="bi bi-play-fill"></i> Resume</button>
+        {% else %}
+          <button type="submit" class="btn btn-outline-danger"><i class="bi bi-pause-fill"></i> Pause</button>
+        {% endif %}
+      </form>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card text-center">
+          <div class="card-body">
+            <div class="text-muted small"><i class="bi bi-activity"></i> Status</div>
+            <div class="fs-5 fw-semibold">
+              {% if paused %}<span class="text-danger"><i class="bi bi-pause-circle"></i> Paused</span>
+              {% else %}<span class="text-success"><i class="bi bi-play-circle"></i> Running</span>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card text-center">
+          <div class="card-body">
+            <div class="text-muted small"><i class="bi bi-people"></i> Active sessions</div>
+            <div class="fs-4 fw-semibold stat-value" id="statActive">{{ counts.active_sessions or 0 }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card text-center">
+          <div class="card-body">
+            <div class="text-muted small"><i class="bi bi-check2-circle"></i> Items finished (all time)</div>
+            <div class="fs-4 fw-semibold stat-value" id="statFinished">{{ counts.finished_items or 0 }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <div class="card stat-card text-center">
+          <div class="card-body">
+            <div class="text-muted small"><i class="bi bi-lightning-charge"></i> Events produced (this process)</div>
+            <div class="fs-4 fw-semibold stat-value" id="statEvents">{{ events_produced }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h6 class="card-title"><i class="bi bi-sliders me-1"></i>Generator tuning</h6>
+                <p class="text-muted small mb-2">Runtime knobs for the simulation — arrivals, time pacing, session length, and completion/rating behavior. All take effect on the next tick.</p>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap ms-2"
+                      data-bs-toggle="collapse" data-bs-target="#tuningInfo" aria-expanded="false">
+                <i class="bi bi-info-circle me-1"></i>What do these do?
+              </button>
+            </div>
+
+            <div class="collapse mb-3" id="tuningInfo">
+              <div class="card card-body bg-body-tertiary small">
+                <dl class="row mb-0">
+                  <dt class="col-sm-3">Tick interval (s)</dt>
+                  <dd class="col-sm-9">Wall-clock seconds between generator ticks — how often the loop wakes up and does anything at all. Distinct from "sim. seconds / tick" below. Fixed at {{ tick_seconds }}s, not editable here any more: every tick now also publishes a Kafka event for each in-progress item, and <code>watch-summary-service</code>'s inactivity-gap detection depends on that cadence staying put — see <code>client-input/README.md</code>.</dd>
+
+                  <dt class="col-sm-3">Sim. seconds / tick</dt>
+                  <dd class="col-sm-9">How much simulated watch-time each tick advances an in-progress item. Together with an item's duration, this determines how many ticks it takes to finish or hit the abandon point.
+                    <br><strong>Low (5):</strong> a 90-min movie (5,400s) needs ~1,080 ticks to finish — sessions sit "in progress" for a long time even with a fast tick interval.
+                    <br><strong>High (3,600):</strong> a whole movie can finish in a single tick — items barely show up as "in progress" before they're done.</dd>
+
+                  <dt class="col-sm-3">Arrival probability</dt>
+                  <dd class="col-sm-9">The chance arrivals happen at all this tick — a single per-tick coin flip, not applied per-user. Controls <em>traffic volume</em> — how often people show up — and has nothing to do with what happens once someone's watching.
+                    <br><strong>Low (0.05):</strong> new users trickle in rarely; active-session count grows slowly.
+                    <br><strong>High (1.0):</strong> a batch of new users shows up on every single tick, until the whole user pool is active.</dd>
+
+                  <dt class="col-sm-3">New active users / tick</dt>
+                  <dd class="col-sm-9">When arrivals do happen, the max batch size (actual count is random between 1 and this) — every user in that batch starts watching immediately, there's no separate "generated but idle" step.
+                    <br><strong>Low (0):</strong> stops automatic arrivals entirely, regardless of arrival probability — use "Open sessions now" to add users manually instead.
+                    <br><strong>High (50):</strong> up to 50 users can go active in one tick — can exhaust a small user pool in a couple of ticks.</dd>
+
+                  <dt class="col-sm-3">Max items / session</dt>
+                  <dd class="col-sm-9">Ceiling for a per-session cap rolled once when a user becomes active (uniformly random between 1 and this value) — how many items one active stretch watches before the user goes inactive again.
+                    <br><strong>Low (1):</strong> every session watches exactly one item then closes — short-lived sessions, closer to a single-watch model.
+                    <br><strong>High (100):</strong> sessions can binge up to 100 items before closing — active-session count stays elevated since sessions rarely free up.</dd>
+
+                  <dt class="col-sm-3">Abandon probability</dt>
+                  <dd class="col-sm-9">Chance any given item is abandoned partway through rather than watched to completion — rolled once per item, independent of arrivals/traffic. This is what actually drives the finish/abandon split in the tables below.
+                    <br><strong>Low (0.05):</strong> almost everything finishes — the "abandon" badge rarely appears.
+                    <br><strong>High (0.9):</strong> almost every watch gets cut short — most rows show "abandon" with <code>watched_seconds</code> well under the item's duration.</dd>
+
+                  <dt class="col-sm-3">Rating probability</dt>
+                  <dd class="col-sm-9">Chance a <em>finisher</em> rates the item after it ends. Users who abandoned rate at a fixed fraction of this (they rate less often) — there's no separate dial for that.
+                    <br><strong>Low (0.1):</strong> ratings become rare — <code>de.iu.Rating.V002</code> gets sparse traffic relative to <code>Watch.Event</code>.
+                    <br><strong>High (1.0):</strong> virtually every finisher rates — Rating events roughly track ItemFinishedEvents 1:1 for finishers.</dd>
+                </dl>
+              </div>
+            </div>
+
+            <form method="post" action="{{ url_for('update_config') }}" class="row g-2 align-items-end">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Tick interval (s)</label>
+                <input type="number" class="form-control" value="{{ tick_seconds }}" disabled readonly>
+                <div class="form-text">Fixed — see "What do these do?" above.</div>
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Sim. seconds / tick</label>
+                <input type="number" name="simulation_speed" class="form-control" min="1" value="{{ simulation_speed }}" required>
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Arrival probability (0-1)</label>
+                <input type="number" name="arrival_probability" class="form-control" step="0.05" min="0" max="1" value="{{ arrival_probability }}" required>
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">New active users / tick</label>
+                <input type="number" name="max_arrivals_per_tick" class="form-control" min="0" value="{{ max_arrivals_per_tick }}" required>
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Max items / session</label>
+                <input type="number" name="session_max_items" class="form-control" min="1" value="{{ session_max_items }}" required>
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Abandon probability (0-1)</label>
+                <input type="number" name="abandon_probability" class="form-control" step="0.05" min="0" max="1" value="{{ abandon_probability }}" required>
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label small mb-0">Rating probability (0-1)</label>
+                <input type="number" name="rating_probability" class="form-control" step="0.05" min="0" max="1" value="{{ rating_probability }}" required>
+              </div>
+              <div class="col-6 col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-outline-primary w-100">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title"><i class="bi bi-plus-circle me-1"></i>Open sessions now</h6>
+            <p class="text-muted small mb-2">Opens sessions for users who aren't already active. At most one session per user.</p>
+            <form method="post" action="{{ url_for('sessions_add') }}" class="d-flex gap-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="number" name="count" class="form-control" style="max-width: 8rem" min="1" max="100" value="1" required>
+              <button type="submit" class="btn btn-primary text-nowrap">Open sessions</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title"><i class="bi bi-pie-chart me-1"></i>Device mix</h6>
+            <p class="text-muted small mb-2">Share of finished items by device, all-time.</p>
+            <div id="deviceBreakdown"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-body">
+            <h6 class="card-title"><i class="bi bi-sliders2 me-1"></i>Create custom session</h6>
+            <p class="text-muted small mb-2">Pin down a specific user, item, device, outcome, and/or session length instead of leaving it to the random roll — leave any field blank to keep it random.</p>
+            <form method="post" action="{{ url_for('sessions_custom') }}" class="row g-2 align-items-end">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">User ID</label>
+                <input type="text" name="user_id" class="form-control" list="freeUserList" placeholder="Random" autocomplete="off">
+                <datalist id="freeUserList">
+                  {% for uid in free_user_ids %}<option value="{{ uid }}">{% endfor %}
+                </datalist>
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Item ID</label>
+                <input type="text" name="item_id" class="form-control" list="itemIdList" placeholder="Random" autocomplete="off">
+                <datalist id="itemIdList">
+                  {% for iid in item_ids %}<option value="{{ iid }}">{% endfor %}
+                </datalist>
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Device</label>
+                <select name="device_type" class="form-select">
+                  <option value="">Random</option>
+                  {% for d in device_types %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Outcome</label>
+                <select name="outcome" class="form-select">
+                  <option value="">Random</option>
+                  <option value="finish">finish</option>
+                  <option value="abandon">abandon</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label small mb-0">Max items / session</label>
+                <input type="number" name="max_items" class="form-control" min="1" placeholder="Random">
+              </div>
+              <div class="col-6 col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Create session</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card table-card mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+        <h5 class="mb-0">Active sessions</h5>
+        <div class="d-flex align-items-center gap-2">
+          <button type="button" id="bulkEndBtn" class="btn btn-sm btn-outline-danger d-none">
+            <i class="bi bi-x-circle me-1"></i>End selected (<span id="bulkEndCount">0</span>)
+          </button>
+          <input type="search" id="activeSearch" class="form-control form-control-sm" style="max-width: 14rem" placeholder="Filter by user or item…">
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th style="width:2rem"><input type="checkbox" id="selectAllActive" class="form-check-input"></th>
+              <th class="sortable" data-sort="user_id">User <i class="bi bi-caret-down-fill"></i></th>
+              <th class="sortable" data-sort="device_type">Device <i class="bi bi-caret-down-fill"></i></th>
+              <th class="sortable" data-sort="current_item_id">Watching <i class="bi bi-caret-down-fill"></i></th>
+              <th class="sortable" data-sort="item_outcome">Outcome <i class="bi bi-caret-down-fill"></i></th>
+              <th class="sortable" data-sort="progress">Progress <i class="bi bi-caret-down-fill"></i></th>
+              <th class="sortable" data-sort="items_finished">Items so far <i class="bi bi-caret-down-fill"></i></th>
+              <th class="sortable" data-sort="max_items">Session cap <i class="bi bi-caret-down-fill"></i></th>
+              <th class="sortable sort-active" data-sort="session_started_at">Started <i class="bi bi-caret-down-fill"></i></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="activeSessionsBody"></tbody>
+        </table>
+      </div>
+      <div id="activeSessionsEmpty" class="empty-state d-none">
+        <i class="bi bi-moon"></i> No active sessions right now.
+      </div>
+    </div>
+
+    <div class="card table-card">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Recently finished items</h5>
+        <input type="search" id="finishedSearch" class="form-control form-control-sm" style="max-width: 14rem" placeholder="Filter by user or item…">
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>User</th><th>Item</th><th>Watched</th><th>Device</th>
+              <th>Outcome</th><th>Rated</th><th>Ended at</th>
+            </tr>
+          </thead>
+          <tbody id="recentFinishedBody"></tbody>
+        </table>
+      </div>
+      <div id="recentFinishedEmpty" class="empty-state d-none">
+        <i class="bi bi-inbox"></i> No items finished yet.
+      </div>
+    </div>
+
+    <p class="text-muted small mt-3">Live-updates every 5s via <code>/api/status</code> — no page reload. Session
+      bookkeeping lives in this service's own SQLite state, not the Kafka domain model. Each row in "Active
+      sessions" is one currently-active user (at most one session per user); "Recently finished items" is the
+      log of <code>ItemFinishedEvent</code>s actually published to Kafka.</p>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const CSRF_TOKEN = {{ csrf_token()|tojson }};
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      }[c]));
+    }
+
+    function outcomeBadge(outcome) {
+      return outcome === 'finish'
+        ? '<span class="badge text-bg-success">finish</span>'
+        : '<span class="badge text-bg-warning">abandon</span>';
+    }
+
+    function bumpStat(id, value) {
+      const el = document.getElementById(id);
+      if (el.textContent !== String(value)) {
+        el.textContent = value;
+        el.classList.remove('bump');
+        void el.offsetWidth;
+        el.classList.add('bump');
+      }
+    }
+
+    function showToast(message, type) {
+      const area = document.getElementById('flashArea') || (() => {
+        const div = document.createElement('div');
+        div.id = 'flashArea';
+        document.querySelector('main').insertBefore(div, document.querySelector('main').firstChild);
+        return div;
+      })();
+      const alertEl = document.createElement('div');
+      alertEl.className = `alert alert-${type} alert-dismissible fade show`;
+      alertEl.setAttribute('role', 'alert');
+      alertEl.textContent = message;
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'btn-close'; btn.setAttribute('data-bs-dismiss', 'alert');
+      alertEl.appendChild(btn);
+      area.appendChild(alertEl);
+      setTimeout(() => alertEl.classList.remove('show'), 4000);
+      setTimeout(() => alertEl.remove(), 4500);
+    }
+
+    async function postForm(url, fields) {
+      const fd = new FormData();
+      fd.append('csrf_token', CSRF_TOKEN);
+      for (const [k, v] of Object.entries(fields || {})) fd.append(k, v);
+      const res = await fetch(url, { method: 'POST', body: fd });
+      return res.json();
+    }
+
+    // --- Active sessions: sort, filter, multiselect ---------------------
+    const sortState = { field: 'session_started_at', dir: 'desc' };
+    const selectedUserIds = new Set();
+
+    function extractNumber(id) {
+      // IDs are prefix+number ("u42", "t1001") — sorting the string
+      // lexicographically puts "u10" before "u2", which isn't what anyone
+      // wants from a column labeled a number. Sort by the numeric part.
+      const m = String(id).match(/(\d+)/);
+      return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+    }
+
+    const SORT_GETTERS = {
+      user_id: s => extractNumber(s.user_id),
+      device_type: s => s.device_type,
+      current_item_id: s => extractNumber(s.current_item_id),
+      item_outcome: s => s.item_outcome,
+      progress: s => s.target_seconds ? s.position_seconds / s.target_seconds : 0,
+      items_finished: s => s.items_finished,
+      max_items: s => s.max_items,
+      session_started_at: s => s.session_started_at,
+    };
+
+    function sortRows(rows) {
+      const getter = SORT_GETTERS[sortState.field];
+      const dir = sortState.dir === 'asc' ? 1 : -1;
+      return rows.slice().sort((a, b) => {
+        const av = getter(a), bv = getter(b);
+        if (av < bv) return -1 * dir;
+        if (av > bv) return 1 * dir;
+        return 0;
+      });
+    }
+
+    function updateBulkEndButton() {
+      const btn = document.getElementById('bulkEndBtn');
+      document.getElementById('bulkEndCount').textContent = selectedUserIds.size;
+      btn.classList.toggle('d-none', selectedUserIds.size === 0);
+    }
+
+    async function endSession(userId) {
+      const data = await postForm(`/sessions/${encodeURIComponent(userId)}/end`);
+      showToast(data.ok ? `Session for ${userId} ended.` : `${userId} has no active session.`, data.ok ? 'success' : 'warning');
+      selectedUserIds.delete(userId);
+      await poll();
+    }
+
+    async function endSelected() {
+      const userIds = Array.from(selectedUserIds);
+      if (!userIds.length) return;
+      const fd = new FormData();
+      fd.append('csrf_token', CSRF_TOKEN);
+      userIds.forEach(id => fd.append('user_ids', id));
+      const res = await fetch('/sessions/end_bulk', { method: 'POST', body: fd });
+      const data = await res.json();
+      showToast(`Ended ${data.ended.length} of ${data.requested} selected session(s).`, data.ended.length ? 'success' : 'warning');
+      selectedUserIds.clear();
+      await poll();
+    }
+
+    let lastVisibleActive = [];
+
+    function renderActiveSessions(rows) {
+      const tbody = document.getElementById('activeSessionsBody');
+      const filter = document.getElementById('activeSearch').value.trim().toLowerCase();
+      // Drop selections for users no longer active (session ended/closed elsewhere).
+      const liveIds = new Set(rows.map(s => s.user_id));
+      for (const id of selectedUserIds) if (!liveIds.has(id)) selectedUserIds.delete(id);
+
+      const visible = sortRows(rows.filter(s =>
+        !filter || s.user_id.toLowerCase().includes(filter) || s.current_item_id.toLowerCase().includes(filter)
+      ));
+      lastVisibleActive = visible;
+      document.getElementById('activeSessionsEmpty').classList.toggle('d-none', rows.length !== 0);
+
+      tbody.innerHTML = visible.map(s => {
+        const pct = s.target_seconds ? Math.min(100, Math.round(100 * s.position_seconds / s.target_seconds)) : 0;
+        const barColor = s.item_outcome === 'finish' ? 'bg-success' : 'bg-warning';
+        const checked = selectedUserIds.has(s.user_id);
+        return `<tr class="${checked ? 'row-selected' : ''}">
+          <td><input type="checkbox" class="form-check-input session-check" data-user="${escapeHtml(s.user_id)}" ${checked ? 'checked' : ''}></td>
+          <td>${escapeHtml(s.user_id)}</td>
+          <td>${escapeHtml(s.device_type)}</td>
+          <td><code class="id-pill">${escapeHtml(s.current_item_id)}</code></td>
+          <td>${outcomeBadge(s.item_outcome)}</td>
+          <td style="min-width:9rem">
+            <div class="progress"><div class="progress-bar ${barColor}" style="width:${pct}%"></div></div>
+            <div class="small text-muted">${s.position_seconds}s / ${s.target_seconds}s</div>
+          </td>
+          <td>${s.items_finished}</td>
+          <td class="text-muted">${s.max_items}</td>
+          <td class="small text-muted">${escapeHtml(s.session_started_at)}</td>
+          <td>
+            <button type="button" class="btn btn-sm btn-outline-danger session-end-btn" data-user="${escapeHtml(s.user_id)}">End session</button>
+          </td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('.session-check').forEach(cb => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) selectedUserIds.add(cb.dataset.user); else selectedUserIds.delete(cb.dataset.user);
+          cb.closest('tr').classList.toggle('row-selected', cb.checked);
+          updateBulkEndButton();
+        });
+      });
+      tbody.querySelectorAll('.session-end-btn').forEach(btn => {
+        btn.addEventListener('click', () => endSession(btn.dataset.user));
+      });
+
+      const selectAll = document.getElementById('selectAllActive');
+      selectAll.checked = visible.length > 0 && visible.every(s => selectedUserIds.has(s.user_id));
+      updateBulkEndButton();
+    }
+
+    function renderRecentFinished(rows) {
+      const tbody = document.getElementById('recentFinishedBody');
+      const filter = document.getElementById('finishedSearch').value.trim().toLowerCase();
+      const visible = rows.filter(f =>
+        !filter || f.user_id.toLowerCase().includes(filter) || f.item_id.toLowerCase().includes(filter)
+      );
+      document.getElementById('recentFinishedEmpty').classList.toggle('d-none', rows.length !== 0);
+      tbody.innerHTML = visible.map(f => `<tr>
+        <td>${escapeHtml(f.user_id)}</td>
+        <td><code class="id-pill">${escapeHtml(f.item_id)}</code></td>
+        <td>${f.watched_seconds}s</td>
+        <td>${escapeHtml(f.device_type)}</td>
+        <td>${outcomeBadge(f.item_outcome)}</td>
+        <td>${f.rated ? 'yes' : 'no'}</td>
+        <td class="small text-muted">${escapeHtml(f.session_ended_at)}</td>
+      </tr>`).join('');
+    }
+
+    function renderDeviceBreakdown(rows) {
+      const el = document.getElementById('deviceBreakdown');
+      if (!rows.length) {
+        el.innerHTML = '<p class="text-muted small mb-0">No data yet.</p>';
+        return;
+      }
+      const max = Math.max(...rows.map(r => r.count));
+      el.innerHTML = rows.map(r => `
+        <div class="device-bar-row">
+          <div class="device-bar-label">${escapeHtml(r.device_type.replace('_', ' '))}</div>
+          <div class="device-bar-track"><div class="device-bar-fill" style="width:${Math.round(100 * r.count / max)}%"></div></div>
+          <div class="device-bar-count">${r.count}</div>
+        </div>`).join('');
+    }
+
+    let lastData = { active_sessions: [], recent_finished: [], device_breakdown: [] };
+
+    function applyStatus(data) {
+      lastData = data;
+      bumpStat('statActive', data.counts.active_sessions || 0);
+      bumpStat('statFinished', data.counts.finished_items || 0);
+      bumpStat('statEvents', data.events_produced || 0);
+      const dot = document.getElementById('liveDot');
+      const label = document.getElementById('liveLabel');
+      dot.classList.toggle('paused', data.paused);
+      label.textContent = data.paused ? 'paused' : 'live';
+      renderActiveSessions(data.active_sessions);
+      renderRecentFinished(data.recent_finished);
+      renderDeviceBreakdown(data.device_breakdown);
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch('/api/status', { headers: { 'Accept': 'application/json' } });
+        if (res.status === 401 || res.redirected) { window.location.reload(); return; }
+        applyStatus(await res.json());
+      } catch (e) {
+        // Transient network hiccup — next poll will retry.
+      }
+    }
+
+    document.getElementById('activeSearch').addEventListener('input', () => renderActiveSessions(lastData.active_sessions));
+    document.getElementById('finishedSearch').addEventListener('input', () => renderRecentFinished(lastData.recent_finished));
+
+    document.querySelectorAll('th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const field = th.dataset.sort;
+        if (sortState.field === field) {
+          sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.field = field;
+          sortState.dir = 'asc';
+        }
+        document.querySelectorAll('th.sortable').forEach(el => {
+          el.classList.toggle('sort-active', el === th);
+          const icon = el.querySelector('.bi');
+          icon.className = el === th
+            ? (sortState.dir === 'asc' ? 'bi bi-caret-up-fill' : 'bi bi-caret-down-fill')
+            : 'bi bi-caret-down-fill';
+        });
+        renderActiveSessions(lastData.active_sessions);
+      });
+    });
+
+    document.getElementById('selectAllActive').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        lastVisibleActive.forEach(s => selectedUserIds.add(s.user_id));
+      } else {
+        lastVisibleActive.forEach(s => selectedUserIds.delete(s.user_id));
+      }
+      renderActiveSessions(lastData.active_sessions);
+    });
+
+    document.getElementById('bulkEndBtn').addEventListener('click', endSelected);
+
+    poll();
+    setInterval(poll, 5000);
+  </script>
+</body>
+</html>

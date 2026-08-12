@@ -1,0 +1,23 @@
+{
+  "name": "reporting-item-sink-connector",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "topics": "de.iu.Item.V001",
+    "connection.url": "jdbc:postgresql://reporting-db:5432/reporting?stringtype=unspecified",
+    "connection.user": "reporting",
+    "connection.password": "reporting",
+    "table.name.format": "items",
+
+    "key.converter": "io.confluent.connect.avro.AvroConverter",
+    "key.converter.schema.registry.url": "http://schema-registry:8081",
+    "value.converter": "io.confluent.connect.avro.AvroConverter",
+    "value.converter.schema.registry.url": "http://schema-registry:8081",
+
+    "auto.create": "false",
+    "auto.evolve": "false",
+    "insert.mode": "upsert",
+    "pk.mode": "record_key",
+    "pk.fields": "item_id",
+    "delete.enabled": "true"
+  }
+}

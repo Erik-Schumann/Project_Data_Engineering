@@ -1,0 +1,25 @@
+show_id,type,title,director,cast,country,date_added,release_year,rating,duration,listed_in,description
+s1,TV Show,Stranger Things,,,United States,"July 15, 2022",2016,TV-14,4 Seasons,"Drama, Fantasy, Horror",A group of kids uncover supernatural mysteries in their small town.
+s2,TV Show,The Crown,,,United Kingdom,"November 9, 2016",2016,TV-MA,6 Seasons,"Drama, History",Chronicles the reign of Queen Elizabeth II.
+s3,TV Show,Money Heist,,,Spain,"December 3, 2021",2017,TV-MA,5 Seasons,"Crime, Drama, Thriller",A criminal mastermind orchestrates an elaborate heist.
+s4,Movie,The Irishman,Martin Scorsese,,United States,"November 27, 2019",2019,R,209 min,"Crime, Drama",A mob hitman recalls his past.
+s5,Movie,Roma,Alfonso Cuaron,,Mexico,"December 14, 2018",2018,R,135 min,Drama,A year in the life of a middle-class family's maid in Mexico City.
+s6,TV Show,Dark,,,Germany,"June 27, 2020",2017,TV-MA,3 Seasons,"Crime, Drama, Mystery",A family saga with a supernatural twist set in a German town.
+s7,TV Show,Squid Game,,,South Korea,"September 17, 2021",2021,TV-MA,1 Season,"Action, Drama, Thriller",Hundreds of cash-strapped players accept a strange invitation to compete.
+s8,TV Show,Wednesday,,,United States,"November 23, 2022",2022,TV-14,1 Season,"Comedy, Crime, Fantasy",Wednesday Addams navigates a new school as a budding psychic.
+s9,TV Show,Narcos,,,United States,"August 28, 2015",2015,TV-MA,3 Seasons,"Crime, Drama",A chronicle of the criminal exploits of Colombian drug lord Pablo Escobar.
+s10,Movie,The Two Popes,,,United Kingdom,"December 20, 2019",2019,PG-13,125 min,Drama,Retired Pope Benedict discusses succession with future Pope Francis.
+s11,TV Show,Ozark,,,United States,"January 21, 2022",2017,TV-MA,4 Seasons,"Crime, Drama, Thriller",A financial planner relocates his family to launder money.
+s12,Movie,Enola Holmes,,,United States,"September 23, 2020",2020,PG-13,123 min,"Adventure, Mystery, Family",Sherlock's teen sister sets out to find her missing mother.
+s13,TV Show,Lupin,,,France,"January 8, 2021",2021,TV-MA,2 Seasons,"Crime, Drama, Mystery",A gentleman thief seeks revenge for his father's unjust imprisonment.
+s14,Movie,6 Underground,,,United States,"December 13, 2019",2019,R,128 min,"Action, Thriller",Six operatives fake their deaths to fight crime anonymously.
+s15,TV Show,Elite,,,Spain,"October 5, 2018",2018,TV-MA,8 Seasons,"Crime, Drama, Mystery",Working-class students clash with wealthy peers at an elite school.
+s16,Movie,The Platform,,,Spain,"March 20, 2020",2019,R,94 min,"Horror, Sci-Fi, Thriller",Prisoners on different levels of a vertical structure fight for food.
+s17,TV Show,Sex Education,,,United Kingdom,"January 11, 2019",2019,TV-MA,4 Seasons,"Comedy, Drama",A teen with a sex therapist mother starts giving advice himself.
+s18,Movie,I Am Mother,,,Australia,"June 7, 2019",2019,PG-13,113 min,"Drama, Sci-Fi, Thriller",A teenage girl is raised by a robot after humanity's extinction.
+s19,TV Show,You,,,United States,"December 26, 2019",2018,TV-MA,4 Seasons,"Crime, Drama, Thriller",A charming bookstore manager becomes obsessively involved in others' lives.
+s20,TV Show,The Umbrella Academy,,,United States,"February 15, 2019",2019,TV-14,4 Seasons,"Action, Adventure, Comedy",A dysfunctional family of superheroes reunites to solve their father's death.
+s21,Movie,Klaus,,,Spain,"November 8, 2019",2019,PG,97 min,"Animation, Comedy, Family",A jaded postman befriends a reclusive toy maker.
+s22,TV Show,Vikings: Valhalla,,,Ireland,"February 25, 2022",2022,TV-MA,3 Seasons,"Action, Adventure, Drama",Descendants of Norse legends continue their conquest.
+s23,Movie,The Old Guard,,,United States,"July 10, 2020",2020,R,125 min,"Action, Fantasy",A team of immortal mercenaries is exposed.
+s24,Movie,Mank,,,United States,"December 4, 2020",2020,R,131 min,Drama,A screenwriter races to finish the script for Citizen Kane.

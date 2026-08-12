@@ -1,0 +1,19 @@
+movie_id,title,content_type,genre_primary,genre_secondary,release_year,duration_minutes,rating,language,country_of_origin,imdb_rating,production_budget,box_office_revenue,number_of_seasons,number_of_episodes,is_netflix_original,added_to_platform,content_warning
+movie_0202,City Empire,Stand-up Comedy,Horror,Adventure,1961,47.0,TV-14,Spanish,France,6.1,,,,,False,2020-11-30,False
+movie_0214,Last Dragon,Stand-up Comedy,Animation,Comedy,1966,47.0,TV-Y7,English,USA,4.3,,,,,False,2024-11-12,False
+movie_0299,Quest Mystery,TV Series,Biography,,1986,36.0,R,French,Japan,7.4,,,3.0,54.0,True,2022-12-15,True
+movie_0305,Legend House,Movie,Adventure,Fantasy,1984,113.0,TV-MA,English,Japan,,,53455628.0,,,True,2021-06-14,False
+movie_0339,Big Empire,Movie,Fantasy,Sport,1961,106.0,PG-13,Spanish,Japan,7.5,945058.0,,,,False,2024-10-19,False
+movie_0359,Quest Hero,Movie,Biography,,1973,103.0,TV-14,Korean,USA,,22962132.0,124272260.0,,,False,2025-06-13,True
+movie_0360,Fire Night,TV Series,Comedy,Adventure,1953,52.0,TV-14,English,USA,4.0,,,2.0,116.0,False,2022-12-14,True
+movie_0407,Phoenix Adventure,Stand-up Comedy,Action,,1954,48.0,TV-PG,English,USA,6.4,,,,,True,2021-09-14,True
+movie_0456,Ice Legend,Movie,War,,1979,104.0,PG-13,Hindi,USA,,,96016345.0,,,False,2025-07-18,False
+movie_0508,Last Hero,Movie,Adventure,Crime,1956,123.0,PG,English,Canada,8.1,1074818.0,32843910.0,,,False,2023-10-13,False
+movie_0523,Mystery War,Movie,Fantasy,,1981,159.0,G,Italian,South Korea,6.9,5347853.0,30379004.0,,,False,2023-12-08,False
+movie_0568,Dark Legend,Movie,Sci-Fi,,1956,125.0,TV-Y7,English,Canada,6.2,1464928.0,7568167.0,,,False,2025-03-22,False
+movie_0579,Last Story,Movie,Documentary,,1978,349.0,G,English,South Korea,7.0,5312135.0,69251153.0,,,False,2024-02-05,False
+movie_0711,Empire Kingdom,Movie,Drama,Thriller,1963,92.0,G,German,Japan,7.7,3853848.0,,,,False,2023-11-25,False
+movie_0868,War Empire,TV Series,Crime,Horror,1965,77.0,PG-13,English,France,6.5,,,1.0,150.0,False,2021-09-29,False
+movie_0980,War Battle,TV Series,Adventure,Biography,1966,17.0,TV-MA,Spanish,USA,8.0,,,13.0,166.0,False,2024-03-11,False
+movie_0305,Legend House,Movie,Adventure,Fantasy,1984,113.0,TV-MA,English,Japan,,,53455628.0,,,True,2021-06-14,False
+movie_0980,War Battle,TV Series,Adventure,Biography,1966,17.0,TV-MA,Spanish,USA,8.0,,,13.0,166.0,False,2024-03-11,False

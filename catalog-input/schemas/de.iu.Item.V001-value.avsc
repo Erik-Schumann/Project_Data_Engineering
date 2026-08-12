@@ -1,0 +1,193 @@
+﻿{
+    "type":  "record",
+    "name":  "Value",
+    "namespace":  "cdc.catalog.public.item",
+    "fields":  [
+                   {
+                       "name":  "item_id",
+                       "type":  "string"
+                   },
+                   {
+                       "name":  "type",
+                       "type":  "string"
+                   },
+                   {
+                       "name":  "title",
+                       "type":  "string"
+                   },
+                   {
+                       "name":  "description",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "release_year",
+                       "type":  [
+                                    "null",
+                                    {
+                                        "type":  "int",
+                                        "connect.type":  "int16"
+                                    }
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "date_added",
+                       "type":  [
+                                    "null",
+                                    {
+                                        "type":  "int",
+                                        "connect.version":  1,
+                                        "connect.name":  "org.apache.kafka.connect.data.Date",
+                                        "logicalType":  "date"
+                                    }
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "runtime_minutes",
+                       "type":  [
+                                    "null",
+                                    "int"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "season_count",
+                       "type":  [
+                                    "null",
+                                    {
+                                        "type":  "int",
+                                        "connect.type":  "int16"
+                                    }
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "episode_count",
+                       "type":  [
+                                    "null",
+                                    {
+                                        "type":  "int",
+                                        "connect.type":  "int16"
+                                    }
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "content_rating",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "country",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "original_language",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "imdb_score",
+                       "type":  [
+                                    "null",
+                                    {
+                                        "type":  "bytes",
+                                        "scale":  1,
+                                        "precision":  3,
+                                        "connect.version":  1,
+                                        "connect.parameters":  {
+                                                                   "scale":  "1",
+                                                                   "connect.decimal.precision":  "3"
+                                                               },
+                                        "connect.name":  "org.apache.kafka.connect.data.Decimal",
+                                        "logicalType":  "decimal"
+                                    }
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "is_netflix_original",
+                       "type":  {
+                                    "type":  "boolean",
+                                    "connect.default":  false
+                                },
+                       "default":  false
+                   },
+                   {
+                       "name":  "content_warning",
+                       "type":  {
+                                    "type":  "boolean",
+                                    "connect.default":  false
+                                },
+                       "default":  false
+                   },
+                   {
+                       "name":  "genre_primary",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "genre_secondary",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "catalog_status",
+                       "type":  {
+                                    "type":  "string",
+                                    "connect.default":  "active"
+                                },
+                       "default":  "active"
+                   },
+                   {
+                       "name":  "seed_source",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "created_at",
+                       "type":  {
+                                    "type":  "string",
+                                    "connect.version":  1,
+                                    "connect.default":  "1970-01-01T00:00:00.000000Z",
+                                    "connect.name":  "io.debezium.time.ZonedTimestamp"
+                                },
+                       "default":  "1970-01-01T00:00:00.000000Z"
+                   },
+                   {
+                       "name":  "updated_at",
+                       "type":  {
+                                    "type":  "string",
+                                    "connect.version":  1,
+                                    "connect.default":  "1970-01-01T00:00:00.000000Z",
+                                    "connect.name":  "io.debezium.time.ZonedTimestamp"
+                                },
+                       "default":  "1970-01-01T00:00:00.000000Z"
+                   }
+               ],
+    "connect.name":  "cdc.catalog.public.item.Value"
+}

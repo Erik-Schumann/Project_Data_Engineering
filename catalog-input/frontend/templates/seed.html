@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}Seed Data — Catalog Admin{% endblock %}
+
+{% macro seed_card(key, title, description, badge_html, action_url, preview, name_arg, unseed_key) %}
+<div class="col">
+  <div class="card h-100 {% if key in history %}border-warning-subtle{% endif %}">
+    <div class="card-body d-flex flex-column">
+      <h5 class="card-title d-flex align-items-center justify-content-between">
+        <span class="text-capitalize">{{ title }}</span>
+        {% if key in history %}
+          <span class="badge text-bg-warning"
+                title="Loaded {{ history[key].count }} time(s), last at {{ history[key].last_loaded_at }}">
+            <i class="bi bi-check2-circle me-1"></i>Used
+          </span>
+        {% endif %}
+      </h5>
+      <p class="card-text text-muted small">{{ description }}</p>
+      {{ badge_html | safe }}
+      {% if preview %}
+        <div class="mb-3 small text-muted">
+          Contains:
+          <span class="badge text-bg-light border"><i class="bi bi-film me-1"></i>{{ preview.item_count }} items</span>
+          <span class="badge text-bg-light border"><i class="bi bi-tags me-1"></i>{{ preview.genre_count }} genres</span>
+          <span class="badge text-bg-light border"><i class="bi bi-people me-1"></i>{{ preview.user_count }} users</span>
+        </div>
+      {% endif %}
+      <form method="post" action="{{ action_url }}" class="mt-auto"
+            {% if key in history %}
+            onsubmit="return confirm('&quot;{{ title }}&quot; was already loaded {{ history[key].count }} time(s). Loading it again will add duplicate rows, not update the existing ones. Continue anyway?');"
+            {% endif %}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if key in history %}<input type="hidden" name="confirm" value="yes">{% endif %}
+        <button type="submit" class="btn {% if key in history %}btn-outline-warning{% else %}btn-primary{% endif %} w-100"
+                {% if preview is none %}disabled{% endif %}>
+          {% if key in history %}Seed again anyway{% else %}Seed from {{ title }}{% endif %}
+        </button>
+      </form>
+      {% if name_arg %}
+      <div class="d-flex gap-1 mt-1">
+        {% set items_key = name_arg ~ ":items" %}
+        <form method="post" action="{{ url_for('seed_named_mode', name=name_arg, mode='items') }}" class="flex-fill"
+              {% if items_key in history %}onsubmit="return confirm('Items from &quot;{{ title }}&quot; were already loaded {{ history[items_key].count }} time(s). Continue anyway?');"{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if items_key in history %}<input type="hidden" name="confirm" value="yes">{% endif %}
+          <button type="submit" class="btn btn-outline-secondary btn-sm w-100" {% if not preview or preview.item_count == 0 %}disabled{% endif %}>
+            Items only
+          </button>
+        </form>
+        {% set users_key = name_arg ~ ":users" %}
+        <form method="post" action="{{ url_for('seed_named_mode', name=name_arg, mode='users') }}" class="flex-fill"
+              {% if users_key in history %}onsubmit="return confirm('Users from &quot;{{ title }}&quot; were already loaded {{ history[users_key].count }} time(s). Continue anyway?');"{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if users_key in history %}<input type="hidden" name="confirm" value="yes">{% endif %}
+          <button type="submit" class="btn btn-outline-secondary btn-sm w-100" {% if not preview or preview.user_count == 0 %}disabled{% endif %}>
+            Users only
+          </button>
+        </form>
+      </div>
+      {% endif %}
+      {% set unseed_items = seeded_item_counts.get(unseed_key, 0) %}
+      {% set unseed_users = seeded_user_counts.get(unseed_key, 0) %}
+      {% if unseed_items or unseed_users %}
+      <form method="post" action="{{ url_for('seed_unseed', key=unseed_key) }}" class="mt-1"
+            onsubmit="return confirm('Remove {{ unseed_items }} item(s) and {{ unseed_users }} user(s) seeded from &quot;{{ title }}&quot;? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+          <i class="bi bi-eraser me-1"></i>Unseed ({{ unseed_items }} item(s), {{ unseed_users }} user(s))
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="pt-3 pb-2 mb-3 border-bottom">
+  <h1 class="h2"><i class="bi bi-database-add me-2"></i>Seed Data</h1>
+  <p class="text-muted">
+    Seeding never runs automatically — nothing happens until you click one of the buttons below.
+    Each click <strong>adds</strong> a batch of items/users; packs are allowed to overlap in titles —
+    items are deduplicated by (title, release year) against what's already in the catalog, so
+    re-seeding an overlapping pack only ingests the titles not yet present (users are not
+    deduplicated). A <span class="badge text-bg-warning"><i class="bi bi-check2-circle me-1"></i>Used</span>
+    badge marks a source already loaded before — loading it again asks for confirmation first.
+    Each card's <strong>Unseed</strong> button removes exactly the items and/or users that source
+    added (and forgets it was loaded, so it can be reseeded from scratch). Use the Items/Users
+    pages for everything else.
+  </p>
+</div>
+
+<div class="row g-2 mb-4">
+  <div class="col-auto">
+    <span class="badge text-bg-light border fs-6"><i class="bi bi-film me-1"></i>{{ item_count }} items</span>
+  </div>
+  <div class="col-auto">
+    <span class="badge text-bg-light border fs-6"><i class="bi bi-people me-1"></i>{{ user_count }} users</span>
+  </div>
+</div>
+
+<h2 class="h5 mt-4 mb-3">General <span class="text-muted small fw-normal">— defines both items and users</span></h2>
+<div class="row row-cols-1 row-cols-md-3 g-3">
+  {{ seed_card(
+    "real", "Real data",
+    "The actual Kaggle catalog datasets + MovieLens 1M, mounted at ./data (see catalog-input/README.md for download commands).",
+    ('<span class="badge text-bg-success mb-2 align-self-start"><i class="bi bi-check-circle me-1"></i>Mounted and ready</span>' if real_data_available
+     else '<span class="badge text-bg-secondary mb-2 align-self-start"><i class="bi bi-x-circle me-1"></i>Not mounted</span>'),
+    url_for('seed_real'), real_preview, none, "real"
+  ) }}
+  {% for name in seed_groups['general'] %}
+    {{ seed_card(
+      name, name ~ " seed",
+      "Curated, hand-authored fixture data checked into the repo under catalog-input/seed/seeds/" ~ name ~ "/.",
+      '<span class="badge text-bg-info mb-2 align-self-start"><i class="bi bi-check-circle me-1"></i>Always available</span>',
+      url_for('seed_named', name=name), seed_previews[name], name, name
+    ) }}
+  {% endfor %}
+</div>
+
+{% if seed_groups['items'] %}
+<h2 class="h5 mt-4 mb-3">Items <span class="text-muted small fw-normal">— defines items only, filtered from movies.csv</span></h2>
+<p class="text-muted small">Single-dimension filters on top of the full Netflix pack (genre, release year, duration, language, movie vs. series, content warning). Allowed to overlap — items already in the catalog are skipped, not duplicated.</p>
+<div class="row row-cols-1 row-cols-md-3 g-3">
+  {% for name in seed_groups['items'] %}
+    {{ seed_card(
+      name, name ~ " pack",
+      "Filtered subset of data/movies.csv checked into the repo under catalog-input/seed/seeds/" ~ name ~ "/.",
+      '<span class="badge text-bg-info mb-2 align-self-start"><i class="bi bi-check-circle me-1"></i>Always available</span>',
+      url_for('seed_named', name=name), seed_previews[name], none, name
+    ) }}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if seed_groups['users'] %}
+<h2 class="h5 mt-4 mb-3">Users <span class="text-muted small fw-normal">— defines users only, filtered from users.csv</span></h2>
+<p class="text-muted small">Single-dimension filters on user attributes (e.g. age bracket) — no items included.</p>
+<div class="row row-cols-1 row-cols-md-3 g-3">
+  {% for name in seed_groups['users'] %}
+    {{ seed_card(
+      name, name ~ " pack",
+      "Filtered subset of data/users.csv checked into the repo under catalog-input/seed/seeds/" ~ name ~ "/.",
+      '<span class="badge text-bg-info mb-2 align-self-start"><i class="bi bi-check-circle me-1"></i>Always available</span>',
+      url_for('seed_named', name=name), seed_previews[name], none, name
+    ) }}
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="h5 mt-4 mb-3">Random <span class="text-muted small fw-normal">— synthetic, not from any file</span></h2>
+<p class="text-muted small">Not from any file — generated on the spot (Faker for title/description text, randomized-but-valid values everywhere else). Repeatable: every click adds another batch, there's no "already used" warning here since re-running is the point.</p>
+<div class="row row-cols-1 row-cols-md-3 g-3">
+  <div class="col">
+    <div class="card h-100 {% if 'random_users' in history %}border-info-subtle{% endif %}">
+      <div class="card-body d-flex flex-column">
+        <h5 class="card-title d-flex align-items-center justify-content-between">
+          <span>Random users</span>
+          {% if 'random_users' in history %}
+            <span class="badge text-bg-info" title="Generated {{ history['random_users'].count }} time(s), last at {{ history['random_users'].last_loaded_at }}">
+              <i class="bi bi-check2-circle me-1"></i>{{ history['random_users'].count }}x
+            </span>
+          {% endif %}
+        </h5>
+        <p class="card-text text-muted small">Adds N synthetic users with plausible-but-random demographics. Leave the count blank for a random batch size (10-50).</p>
+        <form method="post" action="{{ url_for('seed_random_users_route') }}" class="d-flex gap-2 mt-auto">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="number" name="count" min="1" max="500" class="form-control" placeholder="random">
+          <button type="submit" class="btn btn-primary text-nowrap">
+            <i class="bi bi-shuffle me-1"></i>Generate
+          </button>
+        </form>
+        {% if seeded_user_counts.get('random_users') %}
+        <form method="post" action="{{ url_for('seed_unseed', key='random_users') }}" class="mt-1"
+              onsubmit="return confirm('Remove all {{ seeded_user_counts['random_users'] }} random user(s)? This cannot be undone.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+            <i class="bi bi-eraser me-1"></i>Unseed ({{ seeded_user_counts['random_users'] }} user(s))
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 {% if 'random_items' in history %}border-info-subtle{% endif %}">
+      <div class="card-body d-flex flex-column">
+        <h5 class="card-title d-flex align-items-center justify-content-between">
+          <span>Random items</span>
+          {% if 'random_items' in history %}
+            <span class="badge text-bg-info" title="Generated {{ history['random_items'].count }} time(s), last at {{ history['random_items'].last_loaded_at }}">
+              <i class="bi bi-check2-circle me-1"></i>{{ history['random_items'].count }}x
+            </span>
+          {% endif %}
+        </h5>
+        <p class="card-text text-muted small">Adds N synthetic items. Title/description via Faker, everything else randomized-but-valid. Leave the count blank for a random batch size (5-20).</p>
+        <form method="post" action="{{ url_for('seed_random_items_route') }}" class="d-flex gap-2 mt-auto">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="number" name="count" min="1" max="500" class="form-control" placeholder="random">
+          <button type="submit" class="btn btn-primary text-nowrap">
+            <i class="bi bi-shuffle me-1"></i>Generate
+          </button>
+        </form>
+        {% if seeded_item_counts.get('random_items') %}
+        <form method="post" action="{{ url_for('seed_unseed', key='random_items') }}" class="mt-1"
+              onsubmit="return confirm('Remove all {{ seeded_item_counts['random_items'] }} random item(s)? This cannot be undone.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+            <i class="bi bi-eraser me-1"></i>Unseed ({{ seeded_item_counts['random_items'] }} item(s))
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100">
+      <div class="card-body d-flex flex-column">
+        <h5 class="card-title">One at a time</h5>
+        <p class="card-text text-muted small">Same generator, no batch count, immediate feedback — a "Random item"/"Random user" button lives on the <a href="{{ url_for('items_list') }}">Items</a> and <a href="{{ url_for('users_list') }}">Users</a> pages directly, next to "Add item"/"Add user".</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if mode == "edit" else "Add" }} item — Catalog Admin{% endblock %}
+{% block content %}
+<div class="pt-3 pb-2 mb-3 border-bottom d-flex justify-content-between align-items-center">
+  <h1 class="h2">
+    <i class="bi bi-film me-2"></i>{{ "Edit item" if mode == "edit" else "Add item" }}
+    {% if mode == "edit" %}<code class="fs-6 ms-2">{{ item.item_id }}</code>{% endif %}
+    {% if item.seed_source %}<span class="badge text-bg-light border ms-2" title="Added by seeding this source">seeded: {{ item.seed_source }}</span>{% endif %}
+  </h1>
+  <a href="{{ url_for('items_list') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Back to items
+  </a>
+</div>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card mb-3">
+    <div class="card-header">Basics</div>
+    <div class="card-body row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Type *</label>
+        <select name="type" class="form-select" required>
+          <option value="" disabled {% if not item.type %}selected{% endif %}>Choose...</option>
+          {% for t in item_types %}
+            <option value="{{ t }}" {% if item.type == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-9">
+        <label class="form-label">Title *</label>
+        <input type="text" name="title" class="form-control" required value="{{ item.title or '' }}">
+      </div>
+      <div class="col-12">
+        <label class="form-label">Description</label>
+        <textarea name="description" class="form-control" rows="2">{{ item.description or '' }}</textarea>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Release year</label>
+        <input type="number" name="release_year" class="form-control" value="{{ item.release_year if item.release_year is not none else '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Date added</label>
+        <input type="date" name="date_added" class="form-control" value="{{ item.date_added or '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Content rating</label>
+        <input type="text" name="content_rating" class="form-control" maxlength="10" placeholder="TV-MA" value="{{ item.content_rating or '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Catalog status *</label>
+        <select name="catalog_status" class="form-select" required>
+          {% for s in catalog_statuses %}
+            <option value="{{ s }}" {% if item.catalog_status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header">Runtime / structure</div>
+    <div class="card-body row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Runtime (minutes) <span class="text-muted small">— movies</span></label>
+        <input type="number" name="runtime_minutes" class="form-control" value="{{ item.runtime_minutes if item.runtime_minutes is not none else '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Season count <span class="text-muted small">— series</span></label>
+        <input type="number" name="season_count" class="form-control" value="{{ item.season_count if item.season_count is not none else '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Episode count <span class="text-muted small">— series</span></label>
+        <input type="number" name="episode_count" class="form-control" value="{{ item.episode_count if item.episode_count is not none else '' }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header">Origin</div>
+    <div class="card-body row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Country</label>
+        <select name="country" class="form-select">
+          <option value="" {% if not item.country %}selected{% endif %}>— none —</option>
+          {% for c in countries %}
+            <option value="{{ c }}" {% if c == item.country %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Original language</label>
+        <select name="original_language" class="form-select">
+          <option value="" {% if not item.original_language %}selected{% endif %}>— none —</option>
+          {% for l in languages %}
+            <option value="{{ l }}" {% if l == item.original_language %}selected{% endif %}>{{ l }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Not sourced from raw data — a manual/derived field, same as the seeder's country&rarr;language proxy.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header">Scores &amp; flags</div>
+    <div class="card-body row g-3">
+      <div class="col-md-3">
+        <label class="form-label">IMDB score</label>
+        <input type="number" step="0.1" min="0" max="10" name="imdb_score" class="form-control" value="{{ item.imdb_score if item.imdb_score is not none else '' }}">
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="is_netflix_original" id="is_netflix_original" {% if item.is_netflix_original %}checked{% endif %}>
+          <label class="form-check-label" for="is_netflix_original">Netflix original</label>
+        </div>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="content_warning" id="content_warning" {% if item.content_warning %}checked{% endif %}>
+          <label class="form-check-label" for="content_warning">Content warning</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      Genres
+      <small><a href="{{ url_for('genres_list') }}">Manage genres</a></small>
+    </div>
+    <div class="card-body row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Primary genre</label>
+        <select name="genre_primary" class="form-select">
+          <option value="" {% if not item.genre_primary %}selected{% endif %}>— none —</option>
+          {% for g in genres %}
+            <option value="{{ g }}" {% if g == item.genre_primary %}selected{% endif %}>{{ g }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Secondary genre</label>
+        <select name="genre_secondary" class="form-select">
+          <option value="" {% if not item.genre_secondary %}selected{% endif %}>— none —</option>
+          {% for g in genres %}
+            <option value="{{ g }}" {% if g == item.genre_secondary %}selected{% endif %}>{{ g }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary">
+    <i class="bi bi-check-lg me-1"></i>{{ "Save changes" if mode == "edit" else "Add item" }}
+  </button>
+  <a href="{{ url_for('items_list') }}" class="btn btn-link">Cancel</a>
+</form>
+{% endblock %}

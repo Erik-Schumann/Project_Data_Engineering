@@ -1,0 +1,61 @@
+movie_id,title,content_type,genre_primary,genre_secondary,release_year,duration_minutes,rating,language,country_of_origin,imdb_rating,production_budget,box_office_revenue,number_of_seasons,number_of_episodes,is_netflix_original,added_to_platform,content_warning
+movie_0026,Last Love,TV Series,Comedy,,2000,78.0,PG,English,India,8.6,,,10.0,121.0,False,2025-02-23,False
+movie_0037,Empire King,TV Series,Comedy,,2011,51.0,TV-G,French,USA,,,,5.0,23.0,False,2025-05-02,False
+movie_0066,Adventure King,Movie,Comedy,Romance,2013,104.0,TV-14,English,Canada,7.9,4687811.0,26772080.0,,,False,2022-06-24,False
+movie_0074,Dark Ice,Movie,Comedy,,2005,150.0,PG,English,Canada,,1915176.0,3628760.0,,,True,2021-11-07,False
+movie_0087,Our Storm,Movie,Comedy,,2010,38.0,PG-13,Italian,USA,6.6,,,,,False,2021-02-22,True
+movie_0102,Fire War,TV Series,Comedy,Sci-Fi,2003,32.0,TV-14,Italian,South Korea,5.1,,,6.0,74.0,False,2023-08-17,True
+movie_0110,Queen Day,Movie,Comedy,Adventure,1998,122.0,NC-17,English,USA,5.5,3551286.0,,,,True,2022-06-03,False
+movie_0124,Bright House,TV Series,Comedy,,2003,38.0,TV-Y,English,USA,6.6,,,12.0,14.0,True,2024-01-14,False
+movie_0132,Dragon War,Documentary,Comedy,,2022,95.0,TV-PG,Spanish,Japan,7.7,,,,,False,2021-01-12,False
+movie_0144,Our Dream,TV Series,Comedy,,2013,37.0,TV-14,Korean,India,9.4,,,11.0,42.0,True,2020-12-07,False
+movie_0160,Love Journey,Movie,Comedy,,2016,10.0,R,Italian,Canada,6.6,9355608.0,738634327.0,,,False,2023-08-19,False
+movie_0163,Bright War,Movie,Comedy,,2015,85.0,TV-PG,English,USA,5.7,503735.0,58761541.0,,,False,2021-01-10,True
+movie_0186,Old House,TV Series,Comedy,,1999,70.0,TV-G,English,USA,,,,9.0,151.0,False,2024-03-08,True
+movie_0188,Our Hero,Movie,Comedy,,1998,111.0,TV-PG,English,USA,9.3,6199801.0,15193445.0,,,False,2022-09-12,False
+movie_0192,Family Queen,Movie,Comedy,Horror,2021,127.0,PG,Korean,Canada,6.1,52114579.0,24037884.0,,,False,2020-09-10,False
+movie_0219,Bright Adventure,Movie,Comedy,,2021,102.0,NC-17,English,Canada,7.1,1852812.0,323259.0,,,True,2025-03-09,False
+movie_0220,An War,TV Series,Comedy,History,2009,47.0,TV-MA,French,Germany,8.1,,,9.0,40.0,False,2022-02-21,False
+movie_0243,New Quest,Movie,Comedy,,1997,147.0,TV-MA,Italian,USA,6.9,1340534.0,7497976.0,,,True,2022-12-11,False
+movie_0251,Queen Mystery,Limited Series,Comedy,,2013,0.0,TV-G,English,South Korea,,,,2.0,24.0,False,2021-01-16,False
+movie_0268,Quest Empire,Movie,Comedy,,2022,120.0,G,English,Japan,6.7,11481343.0,727483.0,,,False,2025-01-20,False
+movie_0282,Secret Ice,Movie,Comedy,Drama,1997,90.0,TV-Y,English,USA,4.2,2199222.0,32143697.0,,,False,2024-03-05,True
+movie_0306,Warrior House,TV Series,Comedy,,2009,45.0,G,English,UK,,,,1.0,83.0,False,2021-10-02,False
+movie_0321,First Family,Stand-up Comedy,Comedy,,2014,534.0,TV-MA,English,Germany,,,,,,False,2024-03-24,True
+movie_0334,Story Warrior,Limited Series,Comedy,,1998,39.0,TV-14,Hindi,India,6.2,,,13.0,31.0,False,2022-10-31,False
+movie_0336,Queen Warrior,Movie,Comedy,,2006,183.0,G,English,UK,7.8,1807604.0,71561859.0,,,True,2021-02-09,False
+movie_0347,Story Warrior,TV Series,Comedy,Family,1996,51.0,NC-17,French,USA,4.9,,,9.0,168.0,True,2021-05-23,False
+movie_0360,Fire Night,TV Series,Comedy,Adventure,1953,52.0,TV-14,English,USA,4.0,,,2.0,116.0,False,2022-12-14,True
+movie_0412,Princess Adventure,Limited Series,Comedy,,1996,68.0,TV-G,Spanish,USA,3.8,,,9.0,132.0,False,2025-01-13,False
+movie_0441,Day Legend,TV Series,Comedy,Thriller,1993,56.0,TV-G,Hindi,USA,4.0,,,8.0,199.0,False,2021-07-14,False
+movie_0448,Story Hero,Movie,Comedy,,1993,101.0,TV-MA,English,USA,,3865797.0,5081496.0,,,True,2020-12-15,False
+movie_0463,Phoenix Day,TV Series,Comedy,,2007,28.0,TV-14,English,USA,8.3,,,13.0,166.0,False,2022-11-14,False
+movie_0478,House Storm,Movie,Comedy,Drama,2004,138.0,NC-17,English,Canada,3.2,,3733955.0,,,True,2022-09-01,False
+movie_0501,Hero Dragon,Movie,Comedy,War,1995,100.0,TV-Y,English,USA,9.0,16854758.0,2474372.0,,,True,2022-09-13,True
+movie_0544,Hero Quest,Movie,Comedy,Music,1990,70.0,TV-PG,English,Germany,5.9,1855152.0,,,,False,2022-10-26,False
+movie_0548,Story Hero,Documentary,Comedy,Adventure,1990,92.0,R,English,Germany,,,,,,False,2024-04-13,False
+movie_0555,Ice Phoenix,TV Series,Comedy,Sci-Fi,2011,22.0,R,English,Germany,3.0,,,,141.0,False,2025-04-06,True
+movie_0574,Journey Princess,Limited Series,Comedy,Drama,2012,57.0,PG,Spanish,USA,5.3,,,6.0,10.0,False,2024-08-14,True
+movie_0583,Hero Ice,Movie,Comedy,,1999,101.0,PG,English,USA,6.8,3951401.0,32741225.0,,,False,2023-07-24,False
+movie_0585,Quest Battle,TV Series,Comedy,,2023,59.0,G,Spanish,USA,,,,6.0,101.0,False,2020-11-25,False
+movie_0597,War Journey,Stand-up Comedy,Comedy,History,1996,77.0,TV-MA,English,USA,3.6,,,,,False,2021-12-24,False
+movie_0606,Legend Fire,Movie,Comedy,Animation,1993,96.0,NC-17,English,UK,9.3,,13896745.0,,,False,2024-04-25,False
+movie_0614,Day Day,Movie,Comedy,,2019,108.0,TV-G,English,Japan,4.6,1559466.0,,,,False,2024-11-20,False
+movie_0635,Dream Family,TV Series,Comedy,,1995,30.0,TV-Y7,French,South Korea,4.8,,,,172.0,False,2023-05-29,False
+movie_0730,Adventure Fire,Documentary,Comedy,,2000,91.0,R,Spanish,France,5.1,,,,,False,2025-01-19,False
+movie_0737,Legend Love,Movie,Comedy,,2024,117.0,TV-Y7,Spanish,USA,6.3,3778470.0,57571931.0,,,False,2021-05-31,False
+movie_0763,My Dragon,Movie,Comedy,Family,2007,93.0,TV-PG,Japanese,France,9.2,958475.0,1245159.0,,,False,2023-05-22,True
+movie_0777,House Dragon,Movie,Comedy,Drama,2018,73.0,TV-Y,English,USA,6.7,,,,,True,2023-11-30,False
+movie_0786,War House,Stand-up Comedy,Comedy,,2017,82.0,PG-13,German,France,6.4,,,,,True,2025-06-08,False
+movie_0823,Adventure Ice,Movie,Comedy,,1992,87.0,TV-PG,English,UK,,527595.0,,,,False,2022-01-15,False
+movie_0824,War Queen,Movie,Comedy,,1998,136.0,PG-13,English,Japan,6.3,14508562.0,7872086.0,,,False,2021-03-22,False
+movie_0830,Storm Mystery,Movie,Comedy,,2019,144.0,TV-MA,French,USA,10.0,29920808.0,476337.0,,,False,2023-09-25,False
+movie_0843,War Fire,Movie,Comedy,Family,1998,60.0,PG-13,English,USA,4.8,2630439.0,,,,False,2024-03-28,False
+movie_0844,Journey Story,Movie,Comedy,Comedy,2001,67.0,R,English,USA,5.1,1204081.0,,,,False,2024-09-25,True
+movie_0866,Love King,TV Series,Comedy,,1997,75.0,G,English,Japan,4.1,,,10.0,44.0,False,2022-10-18,False
+movie_0881,Adventure Dream,Movie,Comedy,,1993,121.0,TV-G,Italian,USA,4.5,,13043639.0,,,False,2024-11-23,False
+movie_0885,Battle Fire,Movie,Comedy,,2015,74.0,TV-MA,English,USA,,2627377.0,10816317.0,,,False,2025-02-26,False
+movie_0934,Kingdom House,TV Series,Comedy,,2018,23.0,TV-G,English,Canada,6.8,,,2.0,22.0,True,2021-03-02,True
+movie_0946,Quest Warrior,Movie,Comedy,Action,2001,83.0,G,English,France,6.5,10571426.0,2106307.0,,,False,2023-09-28,False
+movie_0954,Mission Adventure,Movie,Comedy,,2020,151.0,PG,German,USA,5.6,479995.0,31220059.0,,,True,2020-10-20,False
+movie_0823,Adventure Ice,Movie,Comedy,,1992,87.0,TV-PG,English,UK,,527595.0,,,,False,2022-01-15,False

@@ -1,0 +1,628 @@
+version: "3.8"
+
+# Catalog Input Service.
+# Brings up: Postgres (catalog DB, CDC source) -> Debezium (Kafka Connect) -> Kafka -> Schema Registry.
+# See catalog-input/README.md for the validation walkthrough.
+#
+# Client Input Service.
+# A synthetic watch/rating event generator. generator.py produces
+# de.iu.Rating.V002/de.iu.Watch.Event.V002 directly to Kafka (plain
+# confluent_kafka.SerializingProducer, hand-authored Avro under
+# client-input/schemas/) — no database in front of Kafka for either any
+# more. client-input-db (MySQL) still exists, but only for the item/user
+# pool generator.py's session logic reads from: client-input-item-sink-
+# connector/client-input-user-sink-connector mirror de.iu.Item.V001/
+# User.V001 into it (same JDBC sink pattern reporting-output uses), a plain
+# SQL SELECT against that mirror is what picks which items/users a session
+# can pick from. A MySQL-table-plus-Debezium-CDC outbox for ratings/watch
+# events was tried 2026-08-11 (same shape catalog-db already uses for
+# Item/User) and reverted the same day: neither table was ever read back
+# by anything here, so the durability/atomicity an outbox buys you was
+# never actually needed, and it brought real cost - a whole FOREIGN KEY
+# CASCADE / delete-suppression story, now gone along with it. See
+# client-input/README.md's "How events actually reach Kafka now".
+#
+# de.iu.Watch.Event.V002 carries a message every tick for every
+# in-progress item now (a heartbeat), not just one per watch — there's no
+# separate "finished" event on the wire any more, just whichever tick
+# happens to be last for a given (user_id, item_id). tick_seconds is
+# fixed at 5s in code, not a dashboard-tunable control any more, since
+# watch-summary-service below depends on that cadence staying put. See
+# client-input/README.md.
+#
+# Watch Status Service, Item/User Aggregate Services, and their Grafana
+# dashboards were built, validated end-to-end, then removed by explicit
+# user decision to descope the project back to just Kafka + Catalog Input
+# + Client Input — see ARCHITECTURE.md's "How the project got here" for
+# what was there and why it came out.
+#
+# Watch Summary Service.
+# The one genuine stream-processing job in this project (Kafka Streams,
+# not Python/SQL) - see watch-summary/README.md. Consumes
+# de.iu.Watch.Event.V002's raw, heartbeat-noisy stream, session-windows it
+# on SESSION_GAP_SECONDS of inactivity per (user_id, item_id), and
+# republishes exactly one settled record per watch — same key/value
+# schema — to de.iu.Watch.Summary.V002. No aggregation/counting: a
+# rewatch stays two separate outputs, this job only ever decides which one
+# record survives a window.
+#
+# Reporting Output Service.
+# JDBC sink connectors (on the shared `connect` worker) mirror
+# de.iu.Item.V001/de.iu.User.V001/de.iu.Rating.V002/de.iu.Watch.Summary.V002
+# into a dedicated Postgres (reporting-db), with Grafana on top.
+# reporting-watch-sink-connector reads Watch.Summary.V002, not
+# Watch.Event.V002 directly, so reporting-db never sees heartbeat noise.
+# See reporting-output/README.md.
+#
+# Reporting Output Service — SQL.
+# All ten reporting jobs are periodic SQL queries against reporting-db:
+# user-rating-avg/item-rating-avg (all-time avg rating/user/item),
+# user-mood (good/average/bad from last 3 ratings), trending-rankings
+# (rolling top-10 view/rating rankings), user-series-movie-ratio (all-time
+# series:movie watch ratio/user), item-completion-rate (all-time
+# completion rate/item), user-top-genre (top primary genre over last 8
+# watches/user), user-watch-count (distinct items watched + total
+# watches/user), user-top-device-language (most-used device + most-watched
+# language/user, all-time), and item-viewer-demographics (average viewer
+# age + male/female/other/unknown sex distribution/item) — see
+# reporting-output/README.md for the full detail.
+#
+# Reporting Output Service — retention.
+# stale-event-cleanup-service (a continuously-running tombstone sweep for
+# orphaned Rating/Watch.Event keys) ran 2026-08-10 through 2026-08-11.
+# Its replacement has moved twice since: first client-input-db's own
+# FOREIGN KEY ... ON DELETE CASCADE (which never reached reporting-db - it
+# was deliberately invisible to Kafka), then a one-off reporting-db-migrate
+# service that added the same CASCADE to reporting-db after the JDBC sink
+# connectors' auto.create had already built the tables, and now (since
+# 2026-08-12) reporting-db's own identical CASCADE declared directly in
+# reporting-output/postgres/init/01_schema.sql, applied by Postgres itself
+# at first-boot init time - the connectors run with auto.create=false/
+# auto.evolve=false against tables that already exist, so
+# reporting-db-migrate is gone entirely. That's the whole mechanism now: a
+# rating/watch event produced for an item/user that's since been deleted
+# is cleaned up the instant reporting-item-sink-connector/reporting-user-sink-connector
+# delete the row it points to in reporting-db, no Kafka-side cleanup
+# involved at all - see reporting-output/README.md's "Retention" section
+# for the full picture. reporting-output/reconcile_stale_keys.py stays: a
+# different, unrelated scenario (catalog-db volume resets bypassing
+# row-level DELETE detection entirely, so no tombstone - and therefore no
+# CASCADE - ever fires for those keys).
+#
+# TLS: built and validated end-to-end 2026-08-10 - internal CA, Kafka SSL
+# listener, Postgres ssl=on + hostssl, HTTPS on both frontends - then run
+# without it by deliberate choice, since the ongoing operational overhead
+# (cert lifecycle, listener config, JVM-cold-start-plus-handshake
+# healthcheck timing, Schema Registry registration headroom under
+# concurrent cold-starts) isn't proportionate to a single-developer local
+# Docker Compose stack. See ENTERPRISE_ARCHITECTURE.md's Security section
+# for the concrete implementation notes and what a production rollout
+# would need.
+
+networks:
+  de-net:
+    driver: bridge
+
+volumes:
+  catalog-db-data:
+  kafka-data:
+  client-input-state:
+  client-input-db-data:
+  reporting-db-data:
+  grafana-data:
+
+services:
+
+  kafka:
+    image: confluentinc/cp-kafka:${CONFLUENT_VERSION}
+    networks: [de-net]
+    ports:
+      - "${KAFKA_EXTERNAL_PORT}:9092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    environment:
+      # KRaft mode — no Zookeeper. Single node acts as both broker and
+      # controller, which is the normal single-node dev setup (a real
+      # cluster would run dedicated controller nodes).
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:${KAFKA_EXTERNAL_PORT}
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:${CONFLUENT_VERSION}
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [de-net]
+    ports:
+      - "${SCHEMA_REGISTRY_PORT}:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+
+  kafka-init:
+    image: confluentinc/cp-kafka:${CONFLUENT_VERSION}
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [de-net]
+    volumes:
+      - ./kafka:/scripts:ro
+    entrypoint: ["bash", "/scripts/create-topics.sh"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      PARTITIONS: ${KAFKA_PARTITIONS}
+    restart: "no"
+
+  catalog-db:
+    image: postgres:${POSTGRES_VERSION}
+    networks: [de-net]
+    ports:
+      - "${CATALOG_DB_PORT}:5432"
+    command: ["postgres", "-c", "wal_level=logical"]
+    volumes:
+      - catalog-db-data:/var/lib/postgresql/data
+      - ./catalog-input/postgres/init:/docker-entrypoint-initdb.d:ro
+    environment:
+      POSTGRES_DB: ${CATALOG_DB_NAME}
+      POSTGRES_USER: ${CATALOG_DB_USER}
+      POSTGRES_PASSWORD: ${CATALOG_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CATALOG_DB_USER} -d ${CATALOG_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  catalog-frontend:
+    build:
+      context: ./catalog-input
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    networks: [de-net]
+    ports:
+      - "${FRONTEND_PORT}:5000"
+    volumes:
+      - ./data:/data:ro
+    environment:
+      PGHOST: catalog-db
+      PGPORT: "5432"
+      PGDATABASE: ${CATALOG_DB_NAME}
+      PGUSER: ${CATALOG_DB_USER}
+      PGPASSWORD: ${CATALOG_DB_PASSWORD}
+      FRONTEND_ADMIN_USERNAME: ${FRONTEND_ADMIN_USERNAME}
+      FRONTEND_ADMIN_PASSWORD: ${FRONTEND_ADMIN_PASSWORD}
+      FRONTEND_SECRET_KEY: ${FRONTEND_SECRET_KEY}
+
+  client-input-db:
+    # Just the item/user pool mirror now (mirrored from de.iu.Item.V001/
+    # User.V001 by client-input-item-sink-connector/client-input-user-sink-
+    # connector) - generator.py's session logic reads it with a plain SQL
+    # SELECT. No binlog/replication config needed: nothing reads this
+    # database's binlog any more (ratings/watch_events used to live here,
+    # CDC'd out by client-input-source-connector - removed, see
+    # client-input/README.md's "How events actually reach Kafka now").
+    image: mysql:${MYSQL_VERSION}
+    networks: [de-net]
+    ports:
+      - "${CLIENT_INPUT_DB_PORT}:3306"
+    volumes:
+      - client-input-db-data:/var/lib/mysql
+      - ./client-input/mysql/init:/docker-entrypoint-initdb.d:ro
+    environment:
+      MYSQL_DATABASE: ${CLIENT_INPUT_DB_NAME}
+      MYSQL_USER: ${CLIENT_INPUT_DB_USER}
+      MYSQL_PASSWORD: ${CLIENT_INPUT_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${CLIENT_INPUT_DB_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${CLIENT_INPUT_DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  client-input:
+    build:
+      context: ./client-input
+    depends_on:
+      client-input-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    networks: [de-net]
+    ports:
+      - "${CLIENT_INPUT_PORT}:5001"
+    volumes:
+      - client-input-state:/app/state
+    environment:
+      # generator.py produces ratings/watch events straight to Kafka
+      # (KAFKA_BOOTSTRAP/SCHEMA_REGISTRY_URL below) and separately reads
+      # the item_id/user_id pool from client-input-db's own items/users
+      # tables (mirrored from Kafka by client-input-item-sink-connector/
+      # client-input-user-sink-connector, same JDBC sink pattern
+      # reporting-output uses) - two unrelated uses of "Kafka" in this
+      # service, don't conflate them. See client-input/README.md.
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CLIENT_INPUT_DB_HOST: client-input-db
+      CLIENT_INPUT_DB_PORT: "3306"
+      CLIENT_INPUT_DB_NAME: ${CLIENT_INPUT_DB_NAME}
+      CLIENT_INPUT_DB_USER: ${CLIENT_INPUT_DB_USER}
+      CLIENT_INPUT_DB_PASSWORD: ${CLIENT_INPUT_DB_PASSWORD}
+      CLIENT_INPUT_ADMIN_USERNAME: ${CLIENT_INPUT_ADMIN_USERNAME}
+      CLIENT_INPUT_ADMIN_PASSWORD: ${CLIENT_INPUT_ADMIN_PASSWORD}
+      CLIENT_INPUT_SECRET_KEY: ${CLIENT_INPUT_SECRET_KEY}
+      SIMULATION_SPEED: ${SIMULATION_SPEED}
+      ARRIVAL_PROBABILITY: ${ARRIVAL_PROBABILITY}
+      MAX_ARRIVALS_PER_TICK: ${MAX_ARRIVALS_PER_TICK}
+      SESSION_MAX_ITEMS: ${SESSION_MAX_ITEMS}
+      RATING_PROBABILITY: ${RATING_PROBABILITY}
+      ABANDON_PROBABILITY: ${ABANDON_PROBABILITY}
+      STATE_DB_PATH: /app/state/state.db
+
+  watch-summary-service:
+    # The one genuine stream-processing job in this project (Kafka Streams,
+    # not Python/SQL) - see watch-summary/README.md's "Why Kafka Streams,
+    # not SQL". Session-windows de.iu.Watch.Event.V002's per-tick
+    # heartbeats (client-input above) on SESSION_GAP_SECONDS of inactivity
+    # and republishes exactly one settled record per watch to
+    # de.iu.Watch.Summary.V002 - reporting-watch-sink-connector reads that
+    # topic, not Watch.Event.V002 directly, so reporting-db never sees
+    # heartbeat noise.
+    build:
+      context: ./watch-summary
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    networks: [de-net]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SESSION_GAP_SECONDS: ${SESSION_GAP_SECONDS}
+    restart: unless-stopped
+
+  connect:
+    build:
+      context: ./connect
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+      catalog-db:
+        condition: service_healthy
+      client-input-db:
+        condition: service_healthy
+    networks: [de-net]
+    ports:
+      - "${CONNECT_PORT}:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:29092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: catalog-cdc-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
+
+  connect-register:
+    image: python:3.12-slim
+    depends_on:
+      connect:
+        condition: service_healthy
+    networks: [de-net]
+    volumes:
+      - ./connect/register_connector.py:/scripts/register_connector.py:ro
+      - ./catalog-input/connect:/scripts/catalog-input:ro
+      - ./client-input/connect:/scripts/client-input:ro
+      - ./reporting-output/connect:/scripts/reporting-output:ro
+    entrypoint: ["python", "/scripts/register_connector.py"]
+    restart: "no"
+
+  reporting-db:
+    image: postgres:${POSTGRES_VERSION}
+    networks: [de-net]
+    ports:
+      - "${REPORTING_DB_PORT}:5432"
+    volumes:
+      - reporting-db-data:/var/lib/postgresql/data
+      - ./reporting-output/postgres/init:/docker-entrypoint-initdb.d:ro
+    environment:
+      POSTGRES_DB: ${REPORTING_DB_NAME}
+      POSTGRES_USER: ${REPORTING_DB_USER}
+      POSTGRES_PASSWORD: ${REPORTING_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${REPORTING_DB_USER} -d ${REPORTING_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  grafana:
+    image: grafana/grafana-oss:${GRAFANA_VERSION}
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./reporting-output/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./reporting-output/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+
+  user-rating-service:
+    # Plain Python - a periodic SQL query against reporting-db's ratings
+    # table (mirrored from de.iu.Rating.V002 by
+    # reporting-rating-sink-connector). No kafka/schema-registry dependency
+    # needed - it only ever talks to reporting-db.
+    build:
+      context: ./reporting-output/sql/user-rating-avg
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    # Continuous service, not a one-off — same category as client-input,
+    # unlike kafka-init/connect-register/catalog-seed's restart: "no".
+    restart: unless-stopped
+
+  item-rating-service:
+    # Plain Python - item-side mirror of user-rating-service above (see
+    # reporting-output/sql/item-rating-avg/README.md).
+    build:
+      context: ./reporting-output/sql/item-rating-avg
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    restart: unless-stopped
+
+  trending-rankings-service:
+    # Plain Python - a periodic SQL query against reporting-db's
+    # watch_events/ratings tables (see
+    # reporting-output/sql/trending-rankings/README.md). No
+    # kafka/schema-registry dependency needed - it only ever talks to
+    # reporting-db.
+    build:
+      context: ./reporting-output/sql/trending-rankings
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      TRENDING_WINDOW_MINUTES: ${TRENDING_WINDOW_MINUTES}
+      TRENDING_TOP_N: ${TRENDING_TOP_N}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    restart: unless-stopped
+
+  user-mood-service:
+    # Plain Python - same shape as user-rating-service above.
+    build:
+      context: ./reporting-output/sql/user-mood
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    restart: unless-stopped
+
+  user-watch-count-service:
+    # Plain Python - distinct items watched + total watches per user, see
+    # reporting-output/sql/user-watch-count/README.md.
+    build:
+      context: ./reporting-output/sql/user-watch-count
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    restart: unless-stopped
+
+  user-series-movie-ratio-service:
+    # Plain Python - see
+    # reporting-output/sql/user-series-movie-ratio/README.md.
+    build:
+      context: ./reporting-output/sql/user-series-movie-ratio
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    restart: unless-stopped
+
+  item-completion-rate-service:
+    # Plain Python - see
+    # reporting-output/sql/item-completion-rate/README.md.
+    build:
+      context: ./reporting-output/sql/item-completion-rate
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    restart: unless-stopped
+
+  user-top-genre-service:
+    # Plain Python - see reporting-output/sql/user-top-genre/README.md.
+    build:
+      context: ./reporting-output/sql/user-top-genre
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      USER_TOP_GENRE_RECENT_N: ${USER_TOP_GENRE_RECENT_N}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    restart: unless-stopped
+
+  user-top-device-language-service:
+    # Plain Python - see
+    # reporting-output/sql/user-top-device-language/README.md.
+    build:
+      context: ./reporting-output/sql/user-top-device-language
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    restart: unless-stopped
+
+  item-viewer-demographics-service:
+    # Plain Python - see
+    # reporting-output/sql/item-viewer-demographics/README.md.
+    build:
+      context: ./reporting-output/sql/item-viewer-demographics
+    depends_on:
+      reporting-db:
+        condition: service_healthy
+    networks: [de-net]
+    environment:
+      TRIGGER_INTERVAL_SECONDS: ${TRIGGER_INTERVAL_SECONDS}
+      REPORTING_DB_HOST: reporting-db
+      REPORTING_DB_PORT: "5432"
+      REPORTING_DB_NAME: ${REPORTING_DB_NAME}
+      REPORTING_DB_USER: ${REPORTING_DB_USER}
+      REPORTING_DB_PASSWORD: ${REPORTING_DB_PASSWORD}
+    restart: unless-stopped
+
+  catalog-seed:
+    build:
+      context: ./catalog-input/seed
+    profiles: ["seed"]
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    networks: [de-net]
+    volumes:
+      - ./data:/data:ro
+    environment:
+      PGHOST: catalog-db
+      PGPORT: "5432"
+      PGDATABASE: ${CATALOG_DB_NAME}
+      PGUSER: ${CATALOG_DB_USER}
+      PGPASSWORD: ${CATALOG_DB_PASSWORD}
+    restart: "no"
+
+  kpow:
+    image: factorhouse/kpow-ce:latest
+    # Deliberately no depends_on: connect here (dropped 2026-08-12) - so
+    # kpow's own container starts immediately rather than blocking behind
+    # connect's healthcheck. Correction (also 2026-08-12): kPow does NOT
+    # tolerate CONNECT_REST_URL being unreachable at startup by default -
+    # it runs a startup-validation check against every configured
+    # component and hard-exits (code 1) the first time any of them refuse
+    # the connection, Connect included (this crashed kpow on every fresh
+    # `docker compose up` until this fix, since connect takes noticeably
+    # longer to become healthy than kafka/schema-registry). Fixed with
+    # CONNECT_STARTUP_VALIDATION=false below, kPow's own documented
+    # escape hatch: skips that one check and instead shows Connect as
+    # unavailable in the UI until it catches up on kPow's normal internal
+    # polling schedule - restart: unless-stopped stays anyway as ordinary
+    # hygiene (matches every other long-running service in this file),
+    # not as the fix for this specific race.
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    networks: [de-net]
+    ports:
+      - "3000:3000"
+    environment:
+      CONNECT_STARTUP_VALIDATION: "false"
+      BOOTSTRAP: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_REST_URL: http://connect:8083
+      LICENSE_ID: ${KPOW_LICENSE_ID}
+      LICENSE_CODE: ${KPOW_LICENSE_CODE}
+      LICENSEE: ${KPOW_LICENSEE}
+      LICENSE_EXPIRY: ${KPOW_LICENSE_EXPIRY}
+      LICENSE_SIGNATURE: ${KPOW_LICENSE_SIGNATURE}

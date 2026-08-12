@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Catalog Admin{% endblock %}
+{% block content %}
+<div class="pt-3 pb-2 mb-4 border-bottom">
+  <h1 class="h2"><i class="bi bi-speedometer2 me-2"></i>Dashboard</h1>
+  <p class="text-muted">Catalog Input Service — current state of the Catalog Database.</p>
+</div>
+
+<div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
+  <div class="col">
+    <a href="{{ url_for('items_list') }}" class="text-decoration-none text-reset">
+      <div class="card h-100 border-primary-subtle">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between">
+            <div>
+              <div class="text-muted small text-uppercase">Items</div>
+              <div class="display-6">{{ item_count }}</div>
+            </div>
+            <i class="bi bi-film fs-1 text-primary opacity-50"></i>
+          </div>
+          <div class="small text-muted mt-2">
+            {{ active_item_count }} active
+            {% if items_by_type %}
+              &middot;
+              {% for type, n in items_by_type.items() %}{{ n }} {{ type }}{{ ", " if not loop.last }}{% endfor %}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col">
+    <a href="{{ url_for('users_list') }}" class="text-decoration-none text-reset">
+      <div class="card h-100 border-primary-subtle">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between">
+            <div>
+              <div class="text-muted small text-uppercase">Users</div>
+              <div class="display-6">{{ user_count }}</div>
+            </div>
+            <i class="bi bi-people fs-1 text-primary opacity-50"></i>
+          </div>
+          <div class="small text-muted mt-2">
+            {{ active_user_count }} active
+            {% if users_by_gender %}
+              &middot;
+              {% for gender, n in users_by_gender.items() %}{{ n }} {{ gender }}{{ ", " if not loop.last }}{% endfor %}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<h2 class="h5 mb-3">Manage</h2>
+<div class="row row-cols-1 row-cols-md-3 g-3">
+  <div class="col">
+    <a href="{{ url_for('items_list') }}" class="btn btn-outline-primary w-100 py-3">
+      <i class="bi bi-film d-block fs-4 mb-1"></i> Items
+    </a>
+  </div>
+  <div class="col">
+    <a href="{{ url_for('users_list') }}" class="btn btn-outline-primary w-100 py-3">
+      <i class="bi bi-people d-block fs-4 mb-1"></i> Users
+    </a>
+  </div>
+  <div class="col">
+    <a href="{{ url_for('seed_page') }}" class="btn btn-outline-success w-100 py-3">
+      <i class="bi bi-database-add d-block fs-4 mb-1"></i> Seed Data
+    </a>
+  </div>
+</div>
+{% endblock %}

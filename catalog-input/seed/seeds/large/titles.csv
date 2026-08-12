@@ -1,0 +1,32 @@
+id,title,type,description,release_year,age_certification,runtime,genres,production_countries,seasons,imdb_id,imdb_score,imdb_votes,tmdb_popularity,tmdb_score
+ts001,Stranger Things,SHOW,A group of kids uncover supernatural mysteries in their small town.,2016,TV-14,51,"['drama', 'fantasy', 'horror']",['US'],4,tt4574334,8.6,1200000,120.5,8.6
+ts002,The Crown,SHOW,Chronicles the reign of Queen Elizabeth II.,2016,TV-MA,58,"['drama', 'history']",['GB'],6,tt4786824,8.6,240000,60.2,8.4
+ts003,Money Heist,SHOW,A criminal mastermind orchestrates an elaborate heist.,2017,TV-MA,50,"['crime', 'drama', 'thriller']",['ES'],5,tt6468322,8.2,440000,95.1,8.2
+mv001,The Irishman,MOVIE,A mob hitman recalls his past.,2019,R,209,"['crime', 'drama']",['US'],,tt1302006,7.8,410000,45.3,7.7
+mv002,Roma,MOVIE,A year in the life of a middle-class family's maid in Mexico City.,2018,R,135,"['drama']",['MX'],,tt6155172,7.7,190000,22.4,7.6
+mv003,Bird Box,MOVIE,A woman must guide two children to safety blindfolded.,2018,R,124,"['drama', 'horror', 'thriller']",['US'],,tt2737304,6.6,280000,38.9,6.6
+ts004,Dark,SHOW,A family saga with a supernatural twist set in a German town.,2017,TV-MA,60,"['crime', 'drama', 'mystery']",['DE'],3,tt5753856,8.7,220000,55.0,8.7
+ts005,The Witcher,SHOW,A mutated monster hunter struggles to find his place in a world.,2019,TV-MA,60,"['fantasy', 'drama', 'action']",['US'],3,tt5180504,8.0,540000,88.7,7.9
+mv004,Extraction,MOVIE,A black-market mercenary sets out to save a kidnapped boy.,2020,R,117,"['action', 'thriller']",['US'],,tt7984734,6.7,310000,40.1,6.7
+mv005,Marriage Story,MOVIE,A stage director and his actor wife struggle through a divorce.,2019,R,137,"['drama', 'comedy']",['US'],,tt7653254,7.9,180000,25.6,7.9
+ts006,Squid Game,SHOW,Hundreds of cash-strapped players accept a strange invitation to compete.,2021,TV-MA,55,"['action', 'drama', 'thriller']",['KR'],1,tt10919420,8.0,480000,150.2,7.8
+ts007,Wednesday,SHOW,Wednesday Addams navigates a new school as a budding psychic.,2022,TV-14,47,"['comedy', 'crime', 'fantasy']",['US'],1,tt13443470,8.1,350000,180.4,8.1
+ts008,Narcos,SHOW,A chronicle of the criminal exploits of Colombian drug lord Pablo Escobar.,2015,TV-MA,49,"['crime', 'drama']",['US'],3,tt2707408,8.8,270000,70.3,8.5
+mv006,The Two Popes,MOVIE,Retired Pope Benedict discusses succession with future Pope Francis.,2019,PG-13,125,"['drama']",['GB'],,tt8404614,7.4,60000,18.2,7.6
+ts009,Ozark,SHOW,A financial planner relocates his family to launder money.,2017,TV-MA,60,"['crime', 'drama', 'thriller']",['US'],4,tt5071412,8.4,320000,65.4,8.4
+mv007,Enola Holmes,MOVIE,Sherlock's teen sister sets out to find her missing mother.,2020,PG-13,123,"['adventure', 'mystery', 'family']",['US'],,tt7846844,6.6,150000,55.9,6.7
+ts010,The Crown Season Spinoff,SHOW,A fictional companion series exploring palace staff life.,2020,TV-MA,45,"['drama']",['GB'],2,tt0000001,7.2,8000,12.1,7.0
+mv008,Bird of Prey,MOVIE,A documentary about migratory raptors.,2021,PG,95,"['documentary']",['US'],,tt0000002,7.0,5000,9.4,7.1
+ts011,Lupin,SHOW,A gentleman thief seeks revenge for his father's unjust imprisonment.,2021,TV-MA,45,"['crime', 'drama', 'mystery']",['FR'],2,tt12789558,7.5,90000,60.0,7.7
+mv009,6 Underground,MOVIE,Six operatives fake their deaths to fight crime anonymously.,2019,R,128,"['action', 'thriller']",['US'],,tt6684714,6.1,190000,45.0,6.1
+ts012,Elite,SHOW,Working-class students clash with wealthy peers at an elite school.,2018,TV-MA,50,"['crime', 'drama', 'mystery']",['ES'],8,tt7335184,7.4,90000,88.0,7.6
+mv010,The Platform,MOVIE,Prisoners on different levels of a vertical structure fight for food.,2019,R,94,"['horror', 'sci-fi', 'thriller']",['ES'],,tt8129548,7.0,180000,35.0,7.0
+ts013,Sex Education,SHOW,A teen with a sex therapist mother starts giving advice himself.,2019,TV-MA,52,"['comedy', 'drama']",['GB'],4,tt7767422,8.3,110000,75.0,8.3
+mv011,I Am Mother,MOVIE,A teenage girl is raised by a robot after humanity's extinction.,2019,PG-13,113,"['drama', 'sci-fi', 'thriller']",['US'],,tt5698026,6.6,80000,22.0,6.6
+ts014,You,SHOW,A charming bookstore manager becomes obsessively involved in others' lives.,2018,TV-MA,45,"['crime', 'drama', 'thriller']",['US'],4,tt7335184,7.7,300000,80.0,7.8
+mv012,Bird Box Barcelona,MOVIE,A spin-off set in Barcelona during the same crisis.,2023,R,115,"['drama', 'horror', 'thriller']",['ES'],,tt0000003,6.0,20000,30.0,6.2
+ts015,The Umbrella Academy,SHOW,A dysfunctional family of superheroes reunites to solve their father's death.,2019,TV-14,55,"['action', 'adventure', 'comedy']",['US'],4,tt1312171,7.9,190000,90.0,8.0
+mv013,Klaus,MOVIE,A jaded postman befriends a reclusive toy maker.,2019,PG,97,"['animation', 'comedy', 'family']",['ES'],,tt4729430,8.2,110000,40.0,8.2
+ts016,Vikings: Valhalla,SHOW,Descendants of Norse legends continue their conquest.,2022,TV-MA,50,"['action', 'adventure', 'drama']",['IE'],3,tt13469236,7.6,45000,50.0,7.6
+mv014,The Old Guard,MOVIE,A team of immortal mercenaries is exposed.,2020,R,125,"['action', 'fantasy']",['US'],,tt6857112,6.7,150000,60.0,6.7
+mv015,Mank,MOVIE,A screenwriter races to finish the script for Citizen Kane.,2020,R,131,"['drama']",['US'],,tt10618286,6.8,50000,15.0,6.9

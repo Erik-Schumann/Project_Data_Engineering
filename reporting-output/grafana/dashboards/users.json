@@ -1,0 +1,197 @@
+{
+  "uid": "reporting-users",
+  "title": "Users",
+  "tags": ["reporting-output"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 7,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "user_id",
+        "label": "User",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "reporting-db" },
+        "query": "SELECT 'All' AS __text, '' AS __value UNION ALL SELECT user_id AS __text, user_id AS __value FROM users ORDER BY __text",
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": { "text": "All", "value": "" }
+      },
+      {
+        "name": "user_plan",
+        "label": "Subscription Plan",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "reporting-db" },
+        "query": "SELECT 'All' AS __text, '' AS __value UNION ALL SELECT DISTINCT subscription_plan AS __text, subscription_plan AS __value FROM users ORDER BY __text",
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": { "text": "All", "value": "" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Users ($user_plan)",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT count(*) AS user_count FROM users WHERE (${user_plan:sqlstring} = '' OR subscription_plan = ${user_plan:sqlstring})",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Average Rating ($user_plan)",
+      "description": "Average of each matching user's own average rating (from user_rating_avg, computed by the user-rating-avg job over reporting-db.ratings) - only counts users who've rated at least once.",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT round(avg(r.avg_rating)::numeric, 2) AS avg_rating FROM user_rating_avg r JOIN users u ON u.user_id = r.user_id WHERE (${user_plan:sqlstring} = '' OR u.subscription_plan = ${user_plan:sqlstring})",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Users by Country (Top 10, $user_plan)",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT country, count(*) AS user_count FROM users WHERE country IS NOT NULL AND (${user_plan:sqlstring} = '' OR subscription_plan = ${user_plan:sqlstring}) GROUP BY country ORDER BY user_count DESC LIMIT 10",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Average Rating per User ($user_id, $user_plan)",
+      "description": "All-time avg rating per user, computed by the user-rating-avg job over reporting-db.ratings (no time window - covers every rating a user has ever given).",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT r.user_id, r.avg_rating, r.rating_count, r.updated_at FROM user_rating_avg r JOIN users u ON u.user_id = r.user_id WHERE (${user_id:sqlstring} = '' OR r.user_id = ${user_id:sqlstring}) AND (${user_plan:sqlstring} = '' OR u.subscription_plan = ${user_plan:sqlstring}) ORDER BY r.avg_rating DESC LIMIT 200",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "User Detail ($user_id, $user_plan)",
+      "description": "Filtered by the User and Subscription Plan pickers above - shows every user when both are \"All\". avg_rating/rating_count/mood/movie_percentage/series_percentage/top_genre/top_device/top_language are NULL for a user missing the underlying activity (no ratings, no watches, etc). movie_percentage/series_percentage are each in [0, 1] and sum to 1 - share of this user's all-time watches that were movies vs. series (user-series-movie-ratio job). top_genre/genre_watch_count/watches_used are the user's most-watched primary genre over their last USER_TOP_GENRE_RECENT_N watches (user-top-genre job) - a recency rank, not a time window. top_device/top_language are all-time frequency, tie-broken by most recent watch, not a recency window (user-top-device-language job - see its README).",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT u.user_id, u.age, u.gender, u.country, u.subscription_plan, u.account_status, u.signup_date, u.primary_device, r.avg_rating, r.rating_count, m.mood, m.avg_recent_rating, smr.movie_watch_count, smr.series_watch_count, smr.movie_percentage, smr.series_percentage, tg.top_genre, tg.genre_watch_count, tg.watches_used, dl.top_device, dl.device_watch_count, dl.top_language, dl.language_watch_count FROM users u LEFT JOIN user_rating_avg r ON r.user_id = u.user_id LEFT JOIN user_mood m ON m.user_id = u.user_id LEFT JOIN user_series_movie_ratio smr ON smr.user_id = u.user_id LEFT JOIN user_top_genre tg ON tg.user_id = u.user_id LEFT JOIN user_top_device_language dl ON dl.user_id = u.user_id WHERE (${user_id:sqlstring} = '' OR u.user_id = ${user_id:sqlstring}) AND (${user_plan:sqlstring} = '' OR u.subscription_plan = ${user_plan:sqlstring}) ORDER BY u.user_id LIMIT 200",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "movie_percentage" },
+            "properties": [{ "id": "unit", "value": "percentunit" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "series_percentage" },
+            "properties": [{ "id": "unit", "value": "percentunit" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "top_genre" },
+            "properties": [{ "id": "custom.width", "value": 110 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "top_device" },
+            "properties": [{ "id": "custom.width", "value": 110 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "top_language" },
+            "properties": [{ "id": "custom.width", "value": 110 }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "type": "barchart",
+      "title": "Users by Mood ($user_plan)",
+      "description": "good/average/bad, from the user-mood job's classification of each user's average of their last 3 ratings. Only counts users who've rated at least once.",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 28 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT m.mood, count(*) AS user_count FROM user_mood m JOIN users u ON u.user_id = m.user_id WHERE (${user_plan:sqlstring} = '' OR u.subscription_plan = ${user_plan:sqlstring}) GROUP BY m.mood ORDER BY user_count DESC",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "orientation": "horizontal" }
+    },
+    {
+      "id": 9,
+      "type": "barchart",
+      "title": "Users by Top Genre (Top 10, $user_plan)",
+      "description": "How many users currently have each genre as their top genre - see User Detail above for the per-user definition (most-watched primary genre over their last USER_TOP_GENRE_RECENT_N watches).",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "postgres", "uid": "reporting-db" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "reporting-db" },
+          "format": "table",
+          "rawSql": "SELECT tg.top_genre, count(*) AS user_count FROM user_top_genre tg JOIN users u ON u.user_id = tg.user_id WHERE (${user_plan:sqlstring} = '' OR u.subscription_plan = ${user_plan:sqlstring}) GROUP BY tg.top_genre ORDER BY user_count DESC LIMIT 10",
+          "editorMode": "code",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "orientation": "horizontal" }
+    }
+  ]
+}

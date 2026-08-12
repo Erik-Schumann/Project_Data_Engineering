@@ -1,0 +1,179 @@
+﻿{
+    "type":  "record",
+    "name":  "Value",
+    "namespace":  "cdc.catalog.public.app_user",
+    "fields":  [
+                   {
+                       "name":  "user_id",
+                       "type":  "string"
+                   },
+                   {
+                       "name":  "age",
+                       "type":  [
+                                    "null",
+                                    {
+                                        "type":  "int",
+                                        "connect.type":  "int16"
+                                    }
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "gender",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "occupation",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "country",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "preferred_language",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "signup_date",
+                       "type":  [
+                                    "null",
+                                    {
+                                        "type":  "int",
+                                        "connect.version":  1,
+                                        "connect.name":  "org.apache.kafka.connect.data.Date",
+                                        "logicalType":  "date"
+                                    }
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "subscription_plan",
+                       "type":  {
+                                    "type":  "string",
+                                    "connect.default":  "basic"
+                                },
+                       "default":  "basic"
+                   },
+                   {
+                       "name":  "account_status",
+                       "type":  {
+                                    "type":  "string",
+                                    "connect.default":  "active"
+                                },
+                       "default":  "active"
+                   },
+                   {
+                       "name":  "email",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "first_name",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "last_name",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "state_province",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "city",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "monthly_spend_hours",
+                       "type":  [
+                                    "null",
+                                    {
+                                        "type":  "bytes",
+                                        "scale":  2,
+                                        "precision":  6,
+                                        "connect.version":  1,
+                                        "connect.parameters":  {
+                                                                   "scale":  "2",
+                                                                   "connect.decimal.precision":  "6"
+                                                               },
+                                        "connect.name":  "org.apache.kafka.connect.data.Decimal",
+                                        "logicalType":  "decimal"
+                                    }
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "primary_device",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "seed_source",
+                       "type":  [
+                                    "null",
+                                    "string"
+                                ],
+                       "default":  null
+                   },
+                   {
+                       "name":  "created_at",
+                       "type":  {
+                                    "type":  "string",
+                                    "connect.version":  1,
+                                    "connect.default":  "1970-01-01T00:00:00.000000Z",
+                                    "connect.name":  "io.debezium.time.ZonedTimestamp"
+                                },
+                       "default":  "1970-01-01T00:00:00.000000Z"
+                   },
+                   {
+                       "name":  "updated_at",
+                       "type":  {
+                                    "type":  "string",
+                                    "connect.version":  1,
+                                    "connect.default":  "1970-01-01T00:00:00.000000Z",
+                                    "connect.name":  "io.debezium.time.ZonedTimestamp"
+                                },
+                       "default":  "1970-01-01T00:00:00.000000Z"
+                   }
+               ],
+    "connect.name":  "cdc.catalog.public.app_user.Value"
+}

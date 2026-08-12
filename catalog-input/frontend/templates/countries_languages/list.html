@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Countries & Languages — Catalog Admin{% endblock %}
+
+{% macro bulk_delete_script(table_id, form_id, btn_id, ids_id, action_url, label) %}
+<script>
+(function () {
+  var table = document.getElementById("{{ table_id }}");
+  var selectAll = table.querySelector(".select-all");
+  var bulkForm = document.getElementById("{{ form_id }}");
+  var bulkBtn = document.getElementById("{{ btn_id }}");
+  var idsContainer = document.getElementById("{{ ids_id }}");
+  function rowChecks() { return table.querySelectorAll(".row-check"); }
+  function updateBtn() {
+    var n = table.querySelectorAll(".row-check:checked").length;
+    bulkBtn.disabled = n === 0;
+    bulkBtn.innerHTML = '<i class="bi bi-trash me-1"></i>Delete selected' + (n > 0 ? " (" + n + ")" : "");
+  }
+  selectAll.addEventListener("change", function () {
+    rowChecks().forEach(function (cb) { cb.checked = selectAll.checked; });
+    updateBtn();
+  });
+  rowChecks().forEach(function (cb) { cb.addEventListener("change", updateBtn); });
+  bulkForm.addEventListener("submit", function (e) {
+    var checked = Array.prototype.slice.call(table.querySelectorAll(".row-check:checked"));
+    if (checked.length === 0) { e.preventDefault(); return; }
+    if (!confirm("Delete " + checked.length + " selected {{ label }}(s)? Items/users using them will have this field cleared. This cannot be undone.")) {
+      e.preventDefault();
+      return;
+    }
+    idsContainer.innerHTML = "";
+    checked.forEach(function (cb) {
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "selected_codes";
+      input.value = cb.value;
+      idsContainer.appendChild(input);
+    });
+  });
+  updateBtn();
+})();
+</script>
+{% endmacro %}
+
+{% block content %}
+<div class="pt-3 pb-2 mb-3 border-bottom">
+  <h1 class="h2"><i class="bi bi-globe2 me-2"></i>Countries & Languages</h1>
+</div>
+
+<div class="row g-4">
+  <div class="col-md-6">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="h5 mb-0">Countries</h2>
+      <a href="{{ url_for('countries_new') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i> Add country
+      </a>
+    </div>
+    {% if not countries %}
+      <p class="text-muted">No countries yet. <a href="{{ url_for('countries_new') }}">Add the first one.</a></p>
+    {% else %}
+    <form method="post" action="{{ url_for('countries_bulk_delete') }}" id="countries-bulk-form" class="mb-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div id="countries-bulk-ids"></div>
+      <button type="submit" id="countries-bulk-btn" class="btn btn-outline-danger btn-sm" disabled>
+        <i class="bi bi-trash me-1"></i>Delete selected
+      </button>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle" id="countries-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" class="form-check-input select-all"></th>
+            <th>Code</th>
+            <th>Items/Users using it</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in countries %}
+          <tr>
+            <td><input type="checkbox" class="form-check-input row-check" value="{{ c.code }}"></td>
+            <td>{{ c.code }}</td>
+            <td>{{ c.usage_count }}</td>
+            <td class="text-end">
+              <form method="post" action="{{ url_for('countries_delete', code=c.code) }}" class="d-inline"
+                    onsubmit="return confirm('Delete country {{ c.code }}? Items/users using it will have this field cleared.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {{ bulk_delete_script("countries-table", "countries-bulk-form", "countries-bulk-btn", "countries-bulk-ids", url_for('countries_bulk_delete'), "countr") }}
+    {% endif %}
+  </div>
+
+  <div class="col-md-6">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h2 class="h5 mb-0">Languages</h2>
+      <a href="{{ url_for('languages_new') }}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i> Add language
+      </a>
+    </div>
+    {% if not languages %}
+      <p class="text-muted">No languages yet. <a href="{{ url_for('languages_new') }}">Add the first one.</a></p>
+    {% else %}
+    <form method="post" action="{{ url_for('languages_bulk_delete') }}" id="languages-bulk-form" class="mb-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div id="languages-bulk-ids"></div>
+      <button type="submit" id="languages-bulk-btn" class="btn btn-outline-danger btn-sm" disabled>
+        <i class="bi bi-trash me-1"></i>Delete selected
+      </button>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle" id="languages-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" class="form-check-input select-all"></th>
+            <th>Code</th>
+            <th>Items/Users using it</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in languages %}
+          <tr>
+            <td><input type="checkbox" class="form-check-input row-check" value="{{ l.code }}"></td>
+            <td>{{ l.code }}</td>
+            <td>{{ l.usage_count }}</td>
+            <td class="text-end">
+              <form method="post" action="{{ url_for('languages_delete', code=l.code) }}" class="d-inline"
+                    onsubmit="return confirm('Delete language {{ l.code }}? Items/users using it will have this field cleared.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {{ bulk_delete_script("languages-table", "languages-bulk-form", "languages-bulk-btn", "languages-bulk-ids", url_for('languages_bulk_delete'), "language") }}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

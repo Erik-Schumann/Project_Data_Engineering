@@ -1,0 +1,9 @@
+{
+    "type": "record",
+    "name": "ItemFinishedKey",
+    "namespace": "de.iu",
+    "fields": [
+        {"name": "user_id", "type": "string"},
+        {"name": "item_id", "type": "string"}
+    ]
+}

@@ -1,0 +1,12 @@
+# Downloaded Kaggle datasets (large, licensed by Kaggle — not ours to redistribute).
+# The bundled catalog-input/seed/seeds/*.csv are small, hand-authored fixture sets and ARE committed.
+data/
+
+__pycache__/
+*.pyc
+.DS_Store
+
+.claude/*
+
+.env
+.claude/

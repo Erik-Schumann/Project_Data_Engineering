@@ -1,0 +1,22 @@
+apiVersion: 1
+
+datasources:
+  - name: reporting-db
+    uid: reporting-db
+    type: postgres
+    access: proxy
+    url: reporting-db:5432
+    database: reporting
+    user: reporting
+    isDefault: true
+    editable: false
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+    # Hardcoded, not $ENV{VAR} — Grafana's provisioning-secret expansion
+    # didn't resolve on the image/version used when this was tried
+    # earlier, so this sidesteps that failure mode entirely rather than
+    # re-hitting it. Matches catalog-source-connector.json's own
+    # hardcoded-credentials convention.
+    secureJsonData:
+      password: reporting
