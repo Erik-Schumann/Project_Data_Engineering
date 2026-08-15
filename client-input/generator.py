@@ -50,6 +50,7 @@ client-input-item-sink-connector/client-input-user-sink-connector keep
 mirrored from de.iu.Item.V001/User.V001 — replaces the old in-process
 catalog_consumer.py Kafka-Avro consumer entirely (see ../README.md).
 """
+import contextlib
 import logging
 import os
 import random
@@ -208,15 +209,29 @@ class Generator:
         # request and the automatic per-tick arrival roll can't interleave
         # and race on picking the same free user twice.
         self._arrivals_lock = threading.Lock()
+        # pymysql connections aren't safe for concurrent use from multiple
+        # threads - the wire protocol is stateful per-connection, so
+        # interleaved reads/writes from the tick thread and a Flask request
+        # thread (dashboard() calling free_user_ids()/item_ids()) desync it
+        # permanently, not just race a query result. Every _cursor() caller
+        # goes through this lock instead of a connection pool since query
+        # volume here is tiny (a few per tick).
+        self._db_lock = threading.Lock()
         self.events_produced = 0
 
+    @contextlib.contextmanager
     def _cursor(self):
         # ping(reconnect=True) transparently reopens a dropped connection
         # (e.g. client-input-db restarting) - cheap enough to check every
         # call at this tick cadence (a few seconds), simpler than a
-        # reconnect-on-exception wrapper around every query site.
-        self._db.ping(reconnect=True)
-        return self._db.cursor()
+        # reconnect-on-exception wrapper around every query site. Held
+        # under _db_lock for the whole call, not just the ping/cursor()
+        # setup, since the caller's query execution is what actually
+        # touches the socket.
+        with self._db_lock:
+            self._db.ping(reconnect=True)
+            with self._db.cursor() as cur:
+                yield cur
 
     @property
     def _items(self):
