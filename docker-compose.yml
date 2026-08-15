@@ -154,6 +154,11 @@ services:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
 
   kafka-init:
     image: confluentinc/cp-kafka:${CONFLUENT_VERSION}
@@ -244,8 +249,10 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       schema-registry:
-        condition: service_started
+        condition: service_healthy
     networks: [de-net]
     ports:
       - "${CLIENT_INPUT_PORT}:5001"
@@ -291,8 +298,10 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       schema-registry:
-        condition: service_started
+        condition: service_healthy
     networks: [de-net]
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
@@ -306,8 +315,10 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       schema-registry:
-        condition: service_started
+        condition: service_healthy
       catalog-db:
         condition: service_healthy
       client-input-db:
@@ -612,7 +623,7 @@ services:
       kafka:
         condition: service_healthy
       schema-registry:
-        condition: service_started
+        condition: service_healthy
     networks: [de-net]
     ports:
       - "3000:3000"
