@@ -5,6 +5,13 @@ data/
 __pycache__/
 *.pyc
 .DS_Store
+.pytest_cache/
+
+# client-input/state.py's local SQLite state, created when running the
+# service or its tests outside Docker (STATE_DB_PATH defaults to
+# "state.db" in the cwd) - inside Docker this lives on the client-input-state
+# volume instead, never here.
+state.db
 
 .claude/*
 

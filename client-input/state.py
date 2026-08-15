@@ -10,9 +10,11 @@ While active, a session watches items one after another — each one ends
 with a row in finished_items (and a matching Kafka publish upstream in
 generator.py) before either the session moves on to another item or closes.
 """
+import contextlib
 import os
 import sqlite3
 import threading
+import time
 from datetime import datetime, timezone
 
 DB_PATH = os.environ.get("STATE_DB_PATH", "state.db")
@@ -61,10 +63,95 @@ CREATE TABLE IF NOT EXISTS control (
 def _conn():
     conn = getattr(_local, "conn", None)
     if conn is None:
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        # timeout=2 (default is 5s) - deliberately short, not long: _write()
+        # below owns retry/backoff at the application level now, since
+        # SQLITE_LOCKED (unlike SQLITE_BUSY) isn't retried by this
+        # connection-level timeout at all, so raising it doesn't help that
+        # case and only makes SQLITE_BUSY waits worse. Confirmed empirically
+        # (test_integration_sqlite_concurrency.py): an earlier attempt at
+        # timeout=20 combined with _write()'s 5-attempt retry compounded to
+        # a worst case of 5x20s per write, hanging the test. Two independent
+        # short-leash layers beats one layer with a long one.
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=2)
         conn.row_factory = sqlite3.Row
+        # WAL instead of the default rollback journal: a tick's batch() (see
+        # below) can hold a write transaction open across many active
+        # sessions' worth of updates, and WAL lets dashboard reads (and the
+        # occasional dashboard-triggered write, once the batch releases)
+        # proceed without blocking on it as hard as the default journal
+        # mode would. synchronous=NORMAL is the documented safe pairing for
+        # WAL - the durability it gives up (losing the most recent commits
+        # on an OS crash, not an app crash) matches this table's own
+        # "purely operational, not CDC'd, not the source of truth" status
+        # from the module docstring.
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA wal_autocheckpoint = 10000")
         _local.conn = conn
     return conn
+
+
+def _commit():
+    # Skipped while a batch() block from this same thread is open - the
+    # batch's own exit commits once for the whole block instead of once per
+    # call. Threads other than the one that opened the batch are unaffected
+    # (batch_depth lives on the same thread-local as the connection cache),
+    # so e.g. a dashboard request's own writes still commit immediately.
+    if getattr(_local, "batch_depth", 0) == 0:
+        _conn().commit()
+
+
+def _write(sql, params=()):
+    """execute() + _commit() with a small bounded retry for transient
+    SQLite locking, called *without* the caller already holding _lock -
+    this acquires it fresh per attempt instead. WAL mode plus the
+    connection's own timeout= (see _conn()) absorb most contention, but
+    confirmed empirically (test_integration_sqlite_concurrency.py) that a
+    single dashboard write landing during a heavily-loaded tick's batch can
+    still occasionally hit "database is locked".
+
+    The retry's backoff sleep deliberately happens *outside* _lock: an
+    earlier version had every caller do `with _lock: _write(...)`, so a
+    thread's whole multi-attempt retry-and-backoff cycle held _lock the
+    entire time - which blocked every *other* thread's completely
+    unrelated state.py calls (including the tick thread's own
+    state.batch() commit) for that whole duration, turning a bounded retry
+    into an effective deadlock between the two threads this is supposed to
+    keep independent. Confirmed by reproducing the hang, then confirming
+    this fix (lock held only per-attempt, not across the backoff) resolves
+    it - not just reasoned about.
+    """
+    last_exc = None
+    for attempt in range(5):
+        try:
+            with _lock:
+                _conn().execute(sql, params)
+                _commit()
+            return
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            last_exc = exc
+            time.sleep(0.05 * (attempt + 1))
+    raise last_exc
+
+
+@contextlib.contextmanager
+def batch():
+    """Defers every state-mutating call made on this thread, inside this
+    block, to a single commit at the end - turns a tick's N per-session
+    writes (update_progress/advance_to_next_item/log_finished_item/
+    end_session, once each per active session) into one commit instead of
+    N. Reentrant: nested batch() blocks only commit once, at the outermost
+    exit."""
+    _local.batch_depth = getattr(_local, "batch_depth", 0) + 1
+    try:
+        yield
+    finally:
+        _local.batch_depth -= 1
+        if _local.batch_depth == 0:
+            with _lock:
+                _commit()
 
 
 def init_db(arrival_probability_default=0.6, max_arrivals_per_tick_default=3, simulation_speed_default=45,
@@ -72,7 +159,7 @@ def init_db(arrival_probability_default=0.6, max_arrivals_per_tick_default=3, si
             abandon_probability_default=0.25):
     with _lock:
         _conn().executescript(SCHEMA)
-        _conn().commit()
+        _commit()
         # INSERT OR IGNORE: control values persist across restarts (same
         # volume as the sessions table) — the env-supplied defaults only
         # seed a fresh state.db, they don't clobber a value already changed
@@ -89,7 +176,7 @@ def init_db(arrival_probability_default=0.6, max_arrivals_per_tick_default=3, si
                 ("abandon_probability", str(abandon_probability_default)),
             ],
         )
-        _conn().commit()
+        _commit()
 
 
 def now_iso():
@@ -98,53 +185,43 @@ def now_iso():
 
 def start_session(user_id, device_type, item_id, target_seconds, outcome, max_items):
     ts = now_iso()
-    with _lock:
-        _conn().execute(
-            """INSERT INTO sessions
-               (user_id, device_type, current_item_id, item_outcome,
-                position_seconds, target_seconds, items_finished, max_items, session_started_at, item_started_at)
-               VALUES (?, ?, ?, ?, 0, ?, 0, ?, ?, ?)""",
-            (user_id, device_type, item_id, outcome, target_seconds, max_items, ts, ts),
-        )
-        _conn().commit()
+    _write(
+        """INSERT INTO sessions
+           (user_id, device_type, current_item_id, item_outcome,
+            position_seconds, target_seconds, items_finished, max_items, session_started_at, item_started_at)
+           VALUES (?, ?, ?, ?, 0, ?, 0, ?, ?, ?)""",
+        (user_id, device_type, item_id, outcome, target_seconds, max_items, ts, ts),
+    )
 
 
 def advance_to_next_item(user_id, item_id, target_seconds, outcome):
     ts = now_iso()
-    with _lock:
-        _conn().execute(
-            """UPDATE sessions SET current_item_id = ?, item_outcome = ?, target_seconds = ?,
-               position_seconds = 0, items_finished = items_finished + 1, item_started_at = ?
-               WHERE user_id = ?""",
-            (item_id, outcome, target_seconds, ts, user_id),
-        )
-        _conn().commit()
+    _write(
+        """UPDATE sessions SET current_item_id = ?, item_outcome = ?, target_seconds = ?,
+           position_seconds = 0, items_finished = items_finished + 1, item_started_at = ?
+           WHERE user_id = ?""",
+        (item_id, outcome, target_seconds, ts, user_id),
+    )
 
 
 def update_progress(user_id, position_seconds):
-    with _lock:
-        _conn().execute(
-            "UPDATE sessions SET position_seconds = ? WHERE user_id = ?",
-            (position_seconds, user_id),
-        )
-        _conn().commit()
+    _write(
+        "UPDATE sessions SET position_seconds = ? WHERE user_id = ?",
+        (position_seconds, user_id),
+    )
 
 
 def end_session(user_id):
-    with _lock:
-        _conn().execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
-        _conn().commit()
+    _write("DELETE FROM sessions WHERE user_id = ?", (user_id,))
 
 
 def log_finished_item(user_id, item_id, watched_seconds, device_type, item_outcome, rated, session_ended_at):
-    with _lock:
-        _conn().execute(
-            """INSERT INTO finished_items
-               (user_id, item_id, watched_seconds, device_type, item_outcome, rated, session_ended_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (user_id, item_id, watched_seconds, device_type, item_outcome, int(rated), session_ended_at),
-        )
-        _conn().commit()
+    _write(
+        """INSERT INTO finished_items
+           (user_id, item_id, watched_seconds, device_type, item_outcome, rated, session_ended_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, item_id, watched_seconds, device_type, item_outcome, int(rated), session_ended_at),
+    )
 
 
 def get_session(user_id):
@@ -196,11 +273,7 @@ def is_paused():
 
 
 def set_paused(paused: bool):
-    with _lock:
-        _conn().execute(
-            "UPDATE control SET value = ? WHERE key = 'paused'", ("1" if paused else "0",)
-        )
-        _conn().commit()
+    _write("UPDATE control SET value = ? WHERE key = 'paused'", ("1" if paused else "0",))
 
 
 def get_arrival_probability():
@@ -212,11 +285,7 @@ def get_arrival_probability():
 
 
 def set_arrival_probability(value: float):
-    with _lock:
-        _conn().execute(
-            "UPDATE control SET value = ? WHERE key = 'arrival_probability'", (str(value),)
-        )
-        _conn().commit()
+    _write("UPDATE control SET value = ? WHERE key = 'arrival_probability'", (str(value),))
 
 
 def get_max_arrivals_per_tick():
@@ -228,11 +297,7 @@ def get_max_arrivals_per_tick():
 
 
 def set_max_arrivals_per_tick(value: int):
-    with _lock:
-        _conn().execute(
-            "UPDATE control SET value = ? WHERE key = 'max_arrivals_per_tick'", (str(value),)
-        )
-        _conn().commit()
+    _write("UPDATE control SET value = ? WHERE key = 'max_arrivals_per_tick'", (str(value),))
 
 
 def get_abandon_probability():
@@ -244,11 +309,7 @@ def get_abandon_probability():
 
 
 def set_abandon_probability(value: float):
-    with _lock:
-        _conn().execute(
-            "UPDATE control SET value = ? WHERE key = 'abandon_probability'", (str(value),)
-        )
-        _conn().commit()
+    _write("UPDATE control SET value = ? WHERE key = 'abandon_probability'", (str(value),))
 
 
 def get_simulation_speed():
@@ -260,11 +321,7 @@ def get_simulation_speed():
 
 
 def set_simulation_speed(value: int):
-    with _lock:
-        _conn().execute(
-            "UPDATE control SET value = ? WHERE key = 'simulation_speed'", (str(value),)
-        )
-        _conn().commit()
+    _write("UPDATE control SET value = ? WHERE key = 'simulation_speed'", (str(value),))
 
 
 def get_session_max_items():
@@ -276,11 +333,7 @@ def get_session_max_items():
 
 
 def set_session_max_items(value: int):
-    with _lock:
-        _conn().execute(
-            "UPDATE control SET value = ? WHERE key = 'session_max_items'", (str(value),)
-        )
-        _conn().commit()
+    _write("UPDATE control SET value = ? WHERE key = 'session_max_items'", (str(value),))
 
 
 def get_rating_probability():
@@ -292,8 +345,4 @@ def get_rating_probability():
 
 
 def set_rating_probability(value: float):
-    with _lock:
-        _conn().execute(
-            "UPDATE control SET value = ? WHERE key = 'rating_probability'", (str(value),)
-        )
-        _conn().commit()
+    _write("UPDATE control SET value = ? WHERE key = 'rating_probability'", (str(value),))

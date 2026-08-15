@@ -277,6 +277,23 @@ see "Retention" above). Not a running service — invoke it manually (see the
 docstring at the top of the script for the full one-off `docker run` command)
 whenever counts look off after a catalog-db reset.
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+docker compose up -d   # from the repo root - these need the real stack
+pytest
+```
+
+All of this service's tests are `integration`-marked and need Kafka, Schema
+Registry, Kafka Connect, and `reporting-db` actually running (reachable on
+their host-mapped `localhost` ports - see `.env`), not just a Docker daemon.
+Unlike client-input's `integration` marker (real threads/timing, but still
+faked infra), there's no meaningful way to fake Kafka Connect's own error-
+handling behavior, which is what these tests exist to cover: see
+`tests/test_connector_dlq_integration.py`'s docstring for the incident it's
+a regression test for.
+
 ## Validation
 
 Connector- and cluster-level checks live here; per-job data checks live

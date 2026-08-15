@@ -636,7 +636,11 @@ def to_int(value):
         return None
     try:
         return int(float(value))
-    except ValueError:
+    except (ValueError, OverflowError):
+        # float(value) accepts "inf"/"-inf" and parses them fine, but the
+        # subsequent int() on an infinite float raises OverflowError, not
+        # ValueError - a bare `except ValueError` misses it and crashes the
+        # seeding run on a malformed numeric CSV cell instead of skipping it.
         return None
 
 

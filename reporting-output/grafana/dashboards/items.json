@@ -66,7 +66,7 @@
           "refId": "A",
           "datasource": { "type": "postgres", "uid": "reporting-db" },
           "format": "table",
-          "rawSql": "SELECT i.item_id, i.type, i.title, i.release_year, i.genre_primary, i.genre_secondary, i.content_rating, i.imdb_score, i.is_netflix_original, i.catalog_status, r.avg_rating, r.rating_count, c.completion_rate, c.watch_count, d.average_age, d.pct_male, d.pct_female, d.pct_other, d.pct_unknown, d.viewer_count FROM items i LEFT JOIN item_rating_avg r ON r.item_id = i.item_id LEFT JOIN item_completion_rate c ON c.item_id = i.item_id LEFT JOIN item_viewer_demographics d ON d.item_id = i.item_id WHERE (${item_id:sqlstring} = '' OR i.item_id = ${item_id:sqlstring}) AND (${item_type:sqlstring} = '' OR i.type = ${item_type:sqlstring}) ORDER BY i.item_id LIMIT 200",
+          "rawSql": "SELECT i.item_id, i.type, i.title, i.release_year, i.genre_primary, i.genre_secondary, i.content_rating, i.imdb_score, i.is_netflix_original, i.catalog_status, r.avg_rating, r.rating_count, c.completion_rate, c.watch_count, d.average_age, d.pct_male, d.pct_female, d.pct_other, d.pct_unknown, d.viewer_count FROM items i LEFT JOIN item_rating_avg r ON r.item_id = i.item_id LEFT JOIN item_completion_rate c ON c.item_id = i.item_id LEFT JOIN item_viewer_demographics d ON d.item_id = i.item_id WHERE (${item_id:sqlstring} = '' OR i.item_id = ${item_id:sqlstring}) AND (${item_type:sqlstring} = '' OR i.type = ${item_type:sqlstring}) ORDER BY (substring(i.item_id from 2))::int LIMIT 200",
           "editorMode": "code",
           "rawQuery": true
         }

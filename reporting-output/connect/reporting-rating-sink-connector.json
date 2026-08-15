@@ -17,6 +17,16 @@
     "auto.evolve": "false",
     "insert.mode": "upsert",
     "pk.mode": "record_key",
-    "pk.fields": "user_id,item_id"
+    "pk.fields": "user_id,item_id",
+
+    "errors.tolerance": "all",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true",
+    "errors.deadletterqueue.topic.name": "reporting-rating-sink-dlq",
+    "errors.deadletterqueue.topic.replication.factor": "1",
+    "errors.deadletterqueue.context.headers.enable": "true",
+
+    "max.retries": "1",
+    "retry.backoff.ms": "500"
   }
 }

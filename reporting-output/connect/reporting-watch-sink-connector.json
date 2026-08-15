@@ -22,6 +22,16 @@
     "auto.create": "false",
     "auto.evolve": "false",
     "insert.mode": "insert",
-    "pk.mode": "none"
+    "pk.mode": "none",
+
+    "errors.tolerance": "all",
+    "errors.log.enable": "true",
+    "errors.log.include.messages": "true",
+    "errors.deadletterqueue.topic.name": "reporting-watch-sink-dlq",
+    "errors.deadletterqueue.topic.replication.factor": "1",
+    "errors.deadletterqueue.context.headers.enable": "true",
+
+    "max.retries": "1",
+    "retry.backoff.ms": "500"
   }
 }

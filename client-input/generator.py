@@ -120,6 +120,34 @@ MAX_ARRIVALS_PER_TICK = int(os.environ.get("MAX_ARRIVALS_PER_TICK", "3"))
 RATING_PROBABILITY = float(os.environ.get("RATING_PROBABILITY", "0.7"))
 ABANDON_RATING_SKEW = 0.3
 
+# How long a fetched items/users pool stays valid before the next _items/
+# _users access re-queries client-input-db, instead of every single access
+# doing its own full-table scan (open_sessions/open_custom_session/
+# _continue_or_end_session - once per finished item - and the dashboard's
+# free_user_ids()/item_ids() all go through this). The catalog changes on
+# CDC-sink cadence (seconds at best, see client-input-item-sink-connector/
+# client-input-user-sink-connector), not tick cadence, so a short cache is
+# safe staleness, not a correctness risk - and it's the main relief valve
+# for _db_lock contention between the tick thread and dashboard requests
+# under load, since most calls now never touch client-input-db at all.
+CATALOG_CACHE_TTL_SECONDS = int(os.environ.get("CATALOG_CACHE_TTL_SECONDS", "5"))
+
+# state.batch() (see state.py) turns a tick's per-session commits into one
+# commit for the whole tick - but SQLite still only allows one writer
+# transaction open at a time, and a dashboard write blocked behind an open
+# one fails outright (sqlite3.OperationalError: database is locked) past
+# the connection's ~5s busy-timeout rather than just waiting longer. Chunking
+# bounds how many sessions' worth of writes any single commit can be holding
+# up, independent of how large active_sessions()/an arrivals batch gets -
+# at realistic session counts this is still one commit per tick/batch either
+# way, since len(rows) rarely exceeds this.
+PROGRESS_BATCH_SIZE = int(os.environ.get("PROGRESS_BATCH_SIZE", "200"))
+
+
+def _chunked(seq, size):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
 DB_HOST = os.environ.get("CLIENT_INPUT_DB_HOST", "client-input-db")
 DB_PORT = int(os.environ.get("CLIENT_INPUT_DB_PORT", "3306"))
 DB_NAME = os.environ.get("CLIENT_INPUT_DB_NAME", "client_input")
@@ -217,6 +245,14 @@ class Generator:
         # goes through this lock instead of a connection pool since query
         # volume here is tiny (a few per tick).
         self._db_lock = threading.Lock()
+        # In-process cache for _items/_users (see CATALOG_CACHE_TTL_SECONDS)
+        # - separate lock from _db_lock since a cache hit shouldn't need to
+        # touch client-input-db (or _db_lock) at all.
+        self._catalog_cache_lock = threading.Lock()
+        self._items_cache = None
+        self._items_cache_at = 0.0
+        self._users_cache = None
+        self._users_cache_at = 0.0
         self.events_produced = 0
 
     @contextlib.contextmanager
@@ -233,22 +269,45 @@ class Generator:
             with self._db.cursor() as cur:
                 yield cur
 
+    def _cached_query(self, cache_attr, cache_at_attr, sql):
+        # CATALOG_CACHE_TTL_SECONDS <= 0 disables caching outright (every
+        # call re-queries) rather than relying on a "now - cached_at < 0"
+        # comparison to always be false - explicit rather than incidental,
+        # and what tests use to keep the old always-fresh behavior.
+        if CATALOG_CACHE_TTL_SECONDS > 0:
+            now = time.monotonic()
+            with self._catalog_cache_lock:
+                cached_value = getattr(self, cache_attr)
+                cached_at = getattr(self, cache_at_attr)
+                if cached_value is not None and (now - cached_at) < CATALOG_CACHE_TTL_SECONDS:
+                    return cached_value
+        with self._cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+        if CATALOG_CACHE_TTL_SECONDS > 0:
+            with self._catalog_cache_lock:
+                setattr(self, cache_attr, rows)
+                setattr(self, cache_at_attr, time.monotonic())
+        return rows
+
     @property
     def _items(self):
         # Live query against client-input-db's own items table (mirrored
-        # from de.iu.Item.V001 by client-input-item-sink-connector) - no
-        # periodic refresh needed, it's already up to date as of this
-        # query. catalog_status='active' matches the old catalog_consumer's
-        # active_items() filter.
-        with self._cursor() as cur:
-            cur.execute("SELECT item_id, type, runtime_minutes FROM items WHERE catalog_status = 'active'")
-            return cur.fetchall()
+        # from de.iu.Item.V001 by client-input-item-sink-connector), cached
+        # for CATALOG_CACHE_TTL_SECONDS (see that constant's comment) rather
+        # than re-queried on every single call. catalog_status='active'
+        # matches the old catalog_consumer's active_items() filter.
+        return self._cached_query(
+            "_items_cache", "_items_cache_at",
+            "SELECT item_id, type, runtime_minutes FROM items WHERE catalog_status = 'active'",
+        )
 
     @property
     def _users(self):
-        with self._cursor() as cur:
-            cur.execute("SELECT user_id FROM users WHERE account_status = 'active'")
-            return cur.fetchall()
+        return self._cached_query(
+            "_users_cache", "_users_cache_at",
+            "SELECT user_id FROM users WHERE account_status = 'active'",
+        )
 
     def _target_seconds(self, item):
         if item["type"] == "movie" and item["runtime_minutes"]:
@@ -338,7 +397,15 @@ class Generator:
             row["item_outcome"], rated, state.now_iso(),
         )
 
-    def _continue_or_end_session(self, row):
+    def _decide_continuation(self, row):
+        """Decides what should happen to row's session once its current
+        item finishes - continue to a next item (which needs the catalog
+        pool, so may touch client-input-db on a cache miss) or end the
+        session - without writing anything to state.py. Split from
+        _continue_or_end_session so _handle_progress's chunked batches (see
+        PROGRESS_BATCH_SIZE) can run every I/O-bound decision before
+        opening a state.batch(), instead of interleaving MySQL/Kafka calls
+        with SQLite writes inside one open transaction."""
         items_done = row["items_finished"] + 1
         if items_done < row["max_items"]:
             items = self._items
@@ -346,9 +413,21 @@ class Generator:
                 item = random.choice(items)
                 outcome = _pick_outcome()
                 target_seconds = self._target_seconds(item)
-                state.advance_to_next_item(row["user_id"], item["item_id"], target_seconds, outcome)
-                return
-        state.end_session(row["user_id"])
+                return ("continue", item["item_id"], target_seconds, outcome)
+        return ("end",)
+
+    @staticmethod
+    def _apply_continuation(user_id, decision):
+        """The pure-SQLite half of _decide_continuation's result - safe to
+        call from inside a state.batch() block."""
+        if decision[0] == "continue":
+            _, item_id, target_seconds, outcome = decision
+            state.advance_to_next_item(user_id, item_id, target_seconds, outcome)
+        else:
+            state.end_session(user_id)
+
+    def _continue_or_end_session(self, row):
+        self._apply_continuation(row["user_id"], self._decide_continuation(row))
 
     def open_sessions(self, n):
         """Opens exactly n new sessions right now (users who aren't already
@@ -366,14 +445,23 @@ class Generator:
             active_ids = state.active_user_ids()
             free_users = [u for u in users if u["user_id"] not in active_ids]
             random.shuffle(free_users)
-            for user in free_users[:n]:
-                item = random.choice(items)
-                device_type = random.choice(DEVICE_TYPES)
-                outcome = _pick_outcome()
-                target_seconds = self._target_seconds(item)
-                max_items = random.randint(1, max(1, state.get_session_max_items()))
-                state.start_session(user["user_id"], device_type, item["item_id"], target_seconds, outcome, max_items)
-                created += 1
+            # Chunked the same way and for the same reason as
+            # _handle_progress: one commit per chunk of at most
+            # PROGRESS_BATCH_SIZE new sessions, not one per session, without
+            # letting a single very large n hold a dashboard write off for
+            # longer than that bound.
+            for chunk in _chunked(free_users[:n], PROGRESS_BATCH_SIZE):
+                with state.batch():
+                    for user in chunk:
+                        item = random.choice(items)
+                        device_type = random.choice(DEVICE_TYPES)
+                        outcome = _pick_outcome()
+                        target_seconds = self._target_seconds(item)
+                        max_items = random.randint(1, max(1, state.get_session_max_items()))
+                        state.start_session(
+                            user["user_id"], device_type, item["item_id"], target_seconds, outcome, max_items,
+                        )
+                        created += 1
         return created
 
     def free_user_ids(self):
@@ -456,27 +544,57 @@ class Generator:
 
     def _handle_progress(self):
         simulation_speed = state.get_simulation_speed()
-        for row in state.active_sessions():
-            position = row["position_seconds"] + simulation_speed
-            threshold = (
-                row["target_seconds"] * random.uniform(0.85, 1.0)
-                if row["item_outcome"] == "finish"
-                else row["target_seconds"] * random.uniform(0.1, 0.6)
-            )
-            finished = position >= threshold
-            if finished:
-                position = int(threshold)
+        # Chunked into blocks of at most PROGRESS_BATCH_SIZE sessions each.
+        # Each chunk runs in two passes: first every Kafka produce and
+        # catalog (client-input-db) lookup for that chunk, with no SQLite
+        # transaction open at all; then a state.batch() that only ever does
+        # fast, local, pure-SQLite writes - one commit per chunk instead of
+        # one per session, without that commit's write-lock ever being held
+        # across a produce()/MySQL round-trip. The two used to be
+        # interleaved per-session inside one batch(), which meant a chunk
+        # under real load (many sessions finishing the same tick, each
+        # doing Avro-serialized Kafka produces) could hold the lock past
+        # SQLite's ~5s busy-timeout and fail a concurrent dashboard write
+        # outright - not just delay it. See PROGRESS_BATCH_SIZE's comment
+        # and state.py's batch() docstring for the rest of the "lags under
+        # load" story this and the catalog cache are both addressing.
+        for chunk in _chunked(state.active_sessions(), PROGRESS_BATCH_SIZE):
+            pending = []
+            for row in chunk:
+                position = row["position_seconds"] + simulation_speed
+                threshold = (
+                    row["target_seconds"] * random.uniform(0.85, 1.0)
+                    if row["item_outcome"] == "finish"
+                    else row["target_seconds"] * random.uniform(0.1, 0.6)
+                )
+                finished = position >= threshold
+                if finished:
+                    position = int(threshold)
 
-            # One event per in-progress item, every tick, finished or not -
-            # see the module docstring for why there's no separate
-            # "finished" event any more.
-            self._emit_watch_progress(row["user_id"], row["current_item_id"], row["device_type"], position)
+                # One event per in-progress item, every tick, finished or not -
+                # see the module docstring for why there's no separate
+                # "finished" event any more.
+                self._emit_watch_progress(row["user_id"], row["current_item_id"], row["device_type"], position)
 
-            if finished:
-                self._finish_item(row, position)
-                self._continue_or_end_session(row)
-            else:
-                state.update_progress(row["user_id"], position)
+                if finished:
+                    rated = self._maybe_rate(row, position)
+                    decision = self._decide_continuation(row)
+                    pending.append(("finish", row, position, rated, decision))
+                else:
+                    pending.append(("progress", row["user_id"], position))
+
+            with state.batch():
+                for entry in pending:
+                    if entry[0] == "progress":
+                        _, user_id, position = entry
+                        state.update_progress(user_id, position)
+                    else:
+                        _, row, position, rated, decision = entry
+                        state.log_finished_item(
+                            row["user_id"], row["current_item_id"], position, row["device_type"],
+                            row["item_outcome"], rated, state.now_iso(),
+                        )
+                        self._apply_continuation(row["user_id"], decision)
 
     def tick(self):
         if state.is_paused():

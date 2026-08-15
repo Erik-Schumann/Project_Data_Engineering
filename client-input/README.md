@@ -303,6 +303,21 @@ active-sessions table, a log of recently finished items, and a pause/resume
 toggle (pausing stops the generator tick — no further events are produced
 until resumed).
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest -m "not integration"   # fast, no infra - generator.py/state.py logic against fakes/tmp SQLite
+pytest -m integration          # real threads, real disk I/O, real timing - still no Docker
+pytest                          # both
+```
+
+The `integration` marker here means "real threads/timing/SQLite file", not
+"needs Docker" - unlike reporting-output's integration tests (see
+`../reporting-output/README.md`), this service's concurrency story is fully
+reproducible with `client-input-db`/Kafka faked and only `state.db` real, so
+these still run in well under a second and need nothing running.
+
 ## Validation
 
 - Dashboard login gate works (unauthenticated request redirects to `/login`).

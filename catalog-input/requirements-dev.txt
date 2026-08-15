@@ -1,0 +1,2 @@
+-r frontend/requirements.txt
+pytest>=8
