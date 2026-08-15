@@ -139,8 +139,8 @@ erDiagram
         text account_status
     }
     ratings {
-        text user_id "PK, FK"
-        text item_id "PK, FK"
+        text user_id PK,FK
+        text item_id PK,FK
         smallint rating
         timestamptz rated_at
     }

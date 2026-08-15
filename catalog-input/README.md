@@ -88,16 +88,26 @@ erDiagram
         text primary_device
         text seed_source
     }
-    genre { text name PK }
-    country { text code PK }
-    language { text code PK }
-    id_counter { text prefix PK "i or u"
-                 bigint next_n }
-    seed_log { int id PK
-               text seed_name
-               int item_count
-               int user_count
-               timestamptz loaded_at }
+    genre {
+        text name PK
+    }
+    country {
+        text code PK
+    }
+    language {
+        text code PK
+    }
+    id_counter {
+        text prefix PK "i or u"
+        bigint next_n
+    }
+    seed_log {
+        int id PK
+        text seed_name
+        int item_count
+        int user_count
+        timestamptz loaded_at
+    }
 ```
 
 No foreign keys anywhere in this schema — a deliberate choice, not an
@@ -289,13 +299,19 @@ flowchart TB
         RANDOM["seed_random_item() / seed_random_user()"]
         NEXTID["next_id()<br/>reads/increments id_counter"]
         SEEDGUARD["seed()<br/>raises AlreadySeededError unless<br/>force=True; logs to seed_log"]
+        REALDATA --> NEXTID
+        NAMEDSET --> NEXTID
+        REALDATA --> SEEDGUARD
+        NAMEDSET --> SEEDGUARD
     end
 
     ROUTES --> FORMS --> DB
-    SEEDROUTE --> Seed
-    Seed --> NEXTID
-    Seed --> SEEDGUARD
-    REALDATA & NAMEDSET & RANDOM --> DB
+    SEEDROUTE --> REALDATA
+    SEEDROUTE --> NAMEDSET
+    SEEDROUTE --> RANDOM
+    REALDATA --> DB
+    NAMEDSET --> DB
+    RANDOM --> DB
     DB --> CIDB[("catalog-db (Postgres)")]
 ```
 

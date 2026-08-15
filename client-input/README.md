@@ -201,10 +201,13 @@ flowchart TB
         BATCH["batch()<br/>defers a thread's commits to one<br/>per PROGRESS_BATCH_SIZE chunk"]
     end
 
-    REQ -->|"get_generator()"| Gen
-    REQ --> State
-    TICK --> Gen
-    Gen --> State
+    REQ -->|"get_generator()"| CACHE
+    REQ --> SLOCK
+    TICK --> TICKLOGIC
+    TICKLOGIC --> SLOCK
+    TICKLOGIC --> PRODUCERS
+    TICKLOGIC --> CACHE
+    BATCH -.->|"used by"| TICKLOGIC
 
     CACHE -->|"cache miss only"| DBLOCK
     DBLOCK -->|"SELECT active item_id/user_id pool"| CIDB[("client-input-db<br/>(MySQL)")]
