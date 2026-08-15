@@ -168,6 +168,54 @@ instead. No `ratings`/`watch_events` tables, no `FOREIGN KEY`s, no
 binlog config on `client-input-db` at all — see "How events reach Kafka"
 above.
 
+## Internals
+
+Two threads touch shared state here: gunicorn's one worker thread
+(`--workers 1`, handling whichever HTTP request is currently in flight —
+see "Operational gotcha: two threads, two shared connections" below for
+why more than one worker isn't safe) and the generator's own background
+tick thread. Both go through the same `Generator` singleton
+(`generator.get_generator()`) and the same `state.py` module-level
+functions; the locking/caching/batching machinery below exists entirely to
+make that safe and fast.
+
+```mermaid
+flowchart TB
+    subgraph Threads["Two threads (gunicorn --workers 1)"]
+        direction LR
+        REQ["Dashboard request thread<br/>(app.py route handler)"]
+        TICK["Generator tick thread<br/>(run_forever - tick() every<br/>TICK_SECONDS, sleeps between)"]
+    end
+
+    subgraph Gen["generator.py - Generator (one instance)"]
+        direction TB
+        CACHE["_items / _users properties<br/>(cached, CATALOG_CACHE_TTL_SECONDS)"]
+        DBLOCK["_db_lock<br/>guards every client-input-db call -<br/>pymysql isn't thread-safe"]
+        TICKLOGIC["_handle_arrivals() / _handle_progress()<br/>all Kafka + MySQL I/O first,<br/>then a Kafka-free state.batch()"]
+        PRODUCERS["_rating_producer / _watch_producer<br/>(confluent_kafka.SerializingProducer)"]
+    end
+
+    subgraph State["state.py - sessions / finished_items / control"]
+        direction TB
+        SLOCK["_lock (Python) + _write()<br/>bounded retry, lock held per-attempt<br/>not across the whole retry"]
+        BATCH["batch()<br/>defers a thread's commits to one<br/>per PROGRESS_BATCH_SIZE chunk"]
+    end
+
+    REQ -->|"get_generator()"| Gen
+    REQ --> State
+    TICK --> Gen
+    Gen --> State
+
+    CACHE -->|"cache miss only"| DBLOCK
+    DBLOCK -->|"SELECT active item_id/user_id pool"| CIDB[("client-input-db<br/>(MySQL)")]
+    PRODUCERS -->|"Avro produce"| KAFKA[("Kafka<br/>Rating.V002 / Watch.Event.V002")]
+    SLOCK --> SDB[("state.db<br/>(SQLite, WAL mode)")]
+```
+
+`CACHE`/`DBLOCK`/`PRODUCERS`/`TICKLOGIC` and `SLOCK`/`BATCH` aren't
+decorative boxes — each one is a fix for a specific incident, detailed in
+the two "Operational gotcha" sections right below this.
+
 ### Operational gotcha: two independently-persisted states can drift
 
 Applies to the two sink connectors (item/user pool mirror):
@@ -186,6 +234,58 @@ reset only touches one of. Worth knowing if you ever reset
 `client-input-db-data` outside of a full `docker compose down -v` (which
 also wipes Kafka's own offset-storage topics, so this class of drift can't
 occur there).
+
+### Operational gotcha: two threads, two shared connections
+
+The dashboard route and the background generator tick are two different
+threads (gunicorn's one worker thread plus the generator's own), and each
+touches two pieces of shared local state without any driver-level
+protection against concurrent access from both at once: the
+`client-input-db` MySQL connection, and `state.db`.
+
+The MySQL side went first: `free_user_ids()`/`item_ids()` (dashboard) and
+the tick loop's own catalog-pool queries shared one `pymysql` connection
+with no locking. `pymysql` isn't safe for concurrent use from two threads —
+interleaved reads on the same socket permanently desynced the MySQL wire
+protocol (a `struct.error` on the next read), which left the tick thread
+stuck in a blocking read with no further logging: the generator just
+stopped reacting, silently. Fixed with `generator.py`'s `_db_lock`, held
+for the whole duration of each `_cursor()` call, not just connection setup.
+
+### Operational gotcha: state.db writes under heavy concurrent load
+
+`state.db` (SQLite) is written by two threads: the background generator
+tick and whichever dashboard request gunicorn's single worker happens to
+be handling. Under enough load (many active sessions, high
+`SIMULATION_SPEED`) this used to fail outright — a dashboard write landing
+mid-tick could hit `sqlite3.OperationalError: database is locked`, or in
+one case hang both threads indefinitely. Three real, separate bugs, each
+only found by actually reproducing it under real threads/timing/disk I/O
+(`tests/test_integration_sqlite_concurrency.py`), not by reasoning about
+the code:
+
+- A tick's batched writes (`state.batch()`, see `generator.py`'s
+  `PROGRESS_BATCH_SIZE`) used to also make Kafka `produce()` calls while
+  the SQLite write-lock was held — holding a DB lock across network I/O to
+  a different system, which could exceed SQLite's busy-timeout under load.
+  Fixed by moving every Kafka/MySQL call outside the batch, so the batch
+  itself only ever does fast, local SQLite writes.
+- Even fixed, a single dashboard write could still occasionally hit
+  `database is locked` — a different SQLite error class than the
+  busy-timeout retry handles. Fixed with an explicit, bounded
+  application-level retry (`state.py`'s `_write()`).
+- That retry then caused a worse bug: its backoff sleep ran *while still
+  holding* the process-level `_lock`, so one thread's multi-attempt retry
+  cycle blocked every other thread's completely unrelated `state.py` calls
+  for the whole retry duration — an accidental deadlock between the two
+  threads this was supposed to keep independent. Fixed by acquiring
+  `_lock` fresh per attempt instead of once for the whole retry.
+
+Also added along the way: WAL mode (`state.py`'s `_conn()`) and an
+in-process TTL cache for the `client-input-db` item/user pool
+(`generator.py`'s `CATALOG_CACHE_TTL_SECONDS`), both aimed at the same
+"lags under load" symptom from a different angle — fewer commits and fewer
+MySQL round-trips competing for the same locks in the first place.
 
 ## Kafka topics
 
@@ -288,14 +388,18 @@ docker compose up -d client-input-db client-input
 (`client-input` depends on `client-input-db` being healthy, and now also on
 `kafka`/`schema-registry` directly — it produces to Kafka itself. `connect`/
 `connect-register` need to be up too for the two item/user sink connectors,
-and `kafka-init` should have run at least once to create
-`de.iu.Rating.V002`/`de.iu.Watch.Event.V002` — see `../kafka/create-topics.sh`.
-There's no hard startup ordering enforced between `client-input` and
-`kafka-init` finishing; if `client-input` starts producing before the
-topics exist, `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` means those first few
-produce attempts fail — logged via `generator.py`'s delivery-report
-callback, not fatal — and it self-heals the moment `kafka-init` catches
-up, which in practice is well before the first tick fires.)
+and `kafka-init` needs to have created `de.iu.Rating.V002`/
+`de.iu.Watch.Event.V002` first — see `../kafka/create-topics.sh`.
+`docker-compose.yml` enforces this: `client-input` depends on
+`schema-registry` with `condition: service_healthy` and on `kafka-init`
+with `condition: service_completed_successfully`, so it won't even start
+until both are actually ready. That wasn't always true — an earlier
+version had no hard ordering here, and a `client-input` container that won
+the startup race against either one would fail its first few produce
+attempts (`KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` means an unready topic is
+a hard error, not an auto-create) or hang the whole generator thread
+waiting on a schema-registry that hadn't finished electing its Kafka group
+coordinator yet.)
 
 Open http://localhost:5001 and sign in with your `CLIENT_INPUT_*`
 credentials from `.env`. The dashboard shows live session counts, the

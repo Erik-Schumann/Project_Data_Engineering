@@ -107,6 +107,110 @@ tables (not Kafka topics that have to be replayed and deduped/windowed by
 hand on every read) is what lets all ten jobs below be plain SQL — see
 "The SQL jobs" below.
 
+## Schema
+
+```mermaid
+erDiagram
+    items ||--o{ ratings : "FK, ON DELETE CASCADE"
+    items ||--o{ watch_events : "FK, ON DELETE CASCADE"
+    users ||--o{ ratings : "FK, ON DELETE CASCADE"
+    users ||--o{ watch_events : "FK, ON DELETE CASCADE"
+    items ||--o| item_rating_avg : "same item_id, no FK"
+    items ||--o| item_completion_rate : "same item_id, no FK"
+    items ||--o| item_viewer_demographics : "same item_id, no FK"
+    users ||--o| user_rating_avg : "same user_id, no FK"
+    users ||--o| user_mood : "same user_id, no FK"
+    users ||--o| user_series_movie_ratio : "same user_id, no FK"
+    users ||--o| user_top_genre : "same user_id, no FK"
+    users ||--o| user_watch_count : "same user_id, no FK"
+    users ||--o| user_top_device_language : "same user_id, no FK"
+
+    items {
+        text item_id PK
+        text type
+        text title
+        text genre_primary
+        text catalog_status
+    }
+    users {
+        text user_id PK
+        smallint age
+        text gender
+        text account_status
+    }
+    ratings {
+        text user_id "PK, FK"
+        text item_id "PK, FK"
+        smallint rating
+        timestamptz rated_at
+    }
+    watch_events {
+        bigint id PK
+        text user_id FK
+        text item_id FK
+        integer watched_seconds
+        timestamptz session_ended_at
+    }
+    item_rating_avg {
+        text item_id PK
+        double_precision avg_rating
+        bigint rating_count
+    }
+    item_completion_rate {
+        text item_id PK
+        double_precision completion_rate
+        bigint watch_count
+    }
+    item_viewer_demographics {
+        text item_id PK
+        double_precision average_age
+        bigint viewer_count
+    }
+    user_rating_avg {
+        text user_id PK
+        double_precision avg_rating
+        bigint rating_count
+    }
+    user_mood {
+        text user_id PK
+        text mood
+        double_precision avg_recent_rating
+    }
+    user_series_movie_ratio {
+        text user_id PK
+        bigint movie_watch_count
+        bigint series_watch_count
+    }
+    user_top_genre {
+        text user_id PK
+        text top_genre
+        bigint genre_watch_count
+    }
+    user_watch_count {
+        text user_id PK
+        bigint distinct_items_watched
+        bigint total_watches
+    }
+    user_top_device_language {
+        text user_id PK
+        text top_device
+        text top_language
+    }
+```
+
+Only `items`/`users` → `ratings`/`watch_events` are real, database-enforced
+foreign keys (declared in `postgres/init/01_schema.sql`, the mechanism the
+"Retention" section below relies on). Every aggregate table's `item_id`/
+`user_id` is a plain `PRIMARY KEY` populated by its own job's `INSERT ...
+ON CONFLICT` — it happens to match `items`/`users`' key by convention, not
+by constraint, so a row referencing a since-deleted item/user can go stale
+there in a way it structurally can't in `ratings`/`watch_events` (each job
+handles this with its own full-sync delete every tick — see each job's own
+README). `item_view_ranking`/`item_rating_ranking` (from `trending-rankings`)
+aren't shown above: they're keyed by `(type, rank)`, not `item_id` — a
+top-10 ranking table, not a per-item aggregate, so `item_id` there is just
+a column, not the key.
+
 ## The SQL jobs
 
 All ten jobs are a fresh `psycopg2` connection every
@@ -277,6 +381,37 @@ see "Retention" above). Not a running service — invoke it manually (see the
 docstring at the top of the script for the full one-off `docker run` command)
 whenever counts look off after a catalog-db reset.
 
+## Connector resilience: dead-letter queues on the rating/watch sinks
+
+A stale reference doesn't only come from a catalog-db reset (above) — a
+client-input session that picked an item/user before it was deleted keeps
+emitting `Rating.V002`/`Watch.Summary.V002` events for it every tick for the
+rest of that session's natural duration, regardless of the delete. Those
+events eventually hit `reporting-rating-sink-connector`/
+`reporting-watch-sink-connector`, whose `INSERT`/`UPSERT` then violates the
+`FOREIGN KEY ... ON DELETE CASCADE` in "Retention" above (there's no parent
+row left to reference).
+
+That's an expected, occasional event in an eventually-consistent CDC
+pipeline — but Kafka Connect's default (`errors.tolerance: "none"`) turns
+the *first* one into a fatal error for the whole task, not just that one
+record: the connector stops entirely, silently, and every subsequent
+event — for every user, not just the one with the stale reference — never
+reaches `reporting-db` until someone notices and manually restarts it. Both
+`reporting-output/connect/reporting-rating-sink-connector.json` and
+`reporting-watch-sink-connector.json` now set `errors.tolerance: "all"`
+plus a dead-letter-queue (`reporting-rating-sink-dlq`/
+`reporting-watch-sink-dlq`) so a bad record gets logged and skipped
+instead. `max.retries`/`retry.backoff.ms` are also tuned down from the
+JDBC sink's defaults — the FK violation this guards against isn't
+transient, so retrying it repeatedly before giving up just delays every
+*good* record queued behind it for no benefit.
+
+See `reporting-output/tests/test_connector_dlq_integration.py` for the
+regression test (produces a record with a fabricated bad reference,
+confirms it lands in the DLQ and the connector stays `RUNNING`, plus a
+positive control that a valid record still lands normally).
+
 ## Tests
 
 ```bash
@@ -319,6 +454,11 @@ in each job's own README (see the table above).
   and confirm `reporting-db.ratings`/`watch_events` drop that item's rows
   within a few seconds too — this is the check that verifies the
   `ON DELETE CASCADE` in "Retention" above actually fires.
+- `docker compose exec connect curl -s localhost:8083/connectors/reporting-rating-sink-connector/status`
+  / `reporting-watch-sink-connector` — `RUNNING`, not `FAILED`, is the whole
+  point of "Connector resilience" above; a `FAILED` task here means
+  something is landing in the DLQ topics faster than `errors.tolerance`
+  can absorb it, not that the fix stopped working.
 - All 4 Grafana dashboards reflect live counts without a manual refresh
   (30s auto-refresh).
 - `docker compose logs -f <service-name>` for any of the ten jobs —

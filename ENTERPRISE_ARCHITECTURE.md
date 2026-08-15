@@ -25,10 +25,17 @@ never has to face.
   Security below), not shared `.env` values.
 - **ACLs per principal** — today every consumer can read every topic
 - **Kafka Connect in distributed mode**, a real worker pool instead of
-  the single container this project runs, with dead-letter-queue
-  configuration so one poison message from a bad Debezium event or a
-  malformed Avro payload doesn't stall an entire connector task the way
-  it can here.
+  the single container this project runs. Dead-letter-queue handling
+  itself is partially here already — `reporting-rating-sink-connector`/
+  `reporting-watch-sink-connector` both set `errors.tolerance: "all"` plus
+  a DLQ topic after a real incident where a single FK-violating record
+  (a late event referencing an already-deleted item/user) crashed the
+  whole task and silently halted all reporting-db ingestion until someone
+  noticed (see `reporting-output/README.md`'s "Connector resilience"
+  section). Not extended to the other two sink connectors or the Debezium
+  source connector, and single-worker mode still means one Connect
+  container going down takes every connector with it regardless of DLQ
+  configuration — a real worker pool is what actually fixes that.
 - **Tiered storage** (or a shorter retention policy backed by a
   data-lake sink) once topic volume makes broker-local disk the
   bottleneck — not a concern at this project's data volumes, but the
@@ -182,17 +189,29 @@ pressure, or error rates.
 
 ## CI/CD
 
-**Here**: none. Every change in this project is validated by hand —
-`docker compose up`, check the logs, query Postgres directly, look at a
-Grafana panel.
+**Here**: automated tests exist per-service now (`client-input`: 103
+unit + real-threads/real-SQLite integration tests; `catalog-input`: 134
+unit tests for form validation/seed parsing; `reporting-output`: 3
+integration tests against the live Kafka Connect + Postgres stack,
+regression-testing the DLQ incident above) — but none of it runs in CI,
+only by hand (`pytest`, per each service's own README). Every other
+change (Grafana panels, connector configs, schema) is still validated
+purely by hand — `docker compose up`, check the logs, query Postgres
+directly, look at a Grafana panel.
 
 **Enterprise**:
-- **Automated tests** — the reporting jobs' logic lives in SQL query
+- **Wire the existing test suites into an actual CI pipeline** — they
+  run today, but only when someone remembers to.
+- **Test the reporting SQL jobs' own logic, not just the connector layer**
+  — the 10 scheduled jobs' actual aggregation logic lives in SQL query
   text executed against Postgres, not isolable pure Python functions, so
-  "unit tests" here really means integration tests running each job's
-  actual query against an ephemeral Postgres (Testcontainers-style) in
-  CI, plus end-to-end tests running the full pipeline against ephemeral
-  containers.
+  that's integration tests running each job's real query against an
+  ephemeral Postgres (Testcontainers-style), which doesn't exist yet —
+  `reporting-output`'s current tests cover connector error-handling, not
+  per-job correctness.
+- **End-to-end tests** running the full pipeline against ephemeral
+  containers, not the already-running dev stack the current integration
+  tests assume.
 - **Staged environments** (dev → staging → prod) with environment-specific
   config, instead of the single `.env` this project runs everywhere.
 - **Infrastructure as Code** (Terraform/Pulumi) provisioning the Kafka

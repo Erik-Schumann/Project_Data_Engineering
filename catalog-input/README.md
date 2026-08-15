@@ -52,6 +52,66 @@ same CDC path as the seed script's inserts.
 | `frontend/` | Catalog Admin — Flask/Jinja/Bootstrap CRUD UI + dashboard + seeding page (see below) |
 | `schemas/*.avsc` | The actual Avro key/value schemas currently registered in Schema Registry, exported for reference (see "Registered Avro schemas" below) |
 
+## Schema
+
+```mermaid
+erDiagram
+    item {
+        text item_id PK "i-N, app-generated"
+        text type "movie or series"
+        text title
+        smallint release_year
+        integer runtime_minutes "movies"
+        smallint season_count "series"
+        smallint episode_count "series"
+        text content_rating
+        varchar_2 country "flat text, not FK"
+        text original_language "flat text, not FK"
+        numeric imdb_score
+        boolean is_netflix_original
+        text genre_primary "flat text, not FK"
+        text genre_secondary "flat text, not FK"
+        text catalog_status "active, coming_soon, archived"
+        text seed_source "which pack loaded this row, if any"
+    }
+    app_user {
+        text user_id PK "u-N, app-generated"
+        smallint age
+        text gender
+        text occupation
+        varchar_2 country "flat text, not FK"
+        text preferred_language "flat text, not FK"
+        text subscription_plan
+        text account_status
+        text email
+        numeric monthly_spend_hours
+        text primary_device
+        text seed_source
+    }
+    genre { text name PK }
+    country { text code PK }
+    language { text code PK }
+    id_counter { text prefix PK "i or u"
+                 bigint next_n }
+    seed_log { int id PK
+               text seed_name
+               int item_count
+               int user_count
+               timestamptz loaded_at }
+```
+
+No foreign keys anywhere in this schema — a deliberate choice, not an
+oversight. `item`/`app_user` are the two CDC'd domain entities and have no
+relationship to each other or to anything else. `genre`/`country`/
+`language` look like they should be reference tables `item.genre_primary`/
+`country`/`original_language` (and the `app_user` equivalents) point at,
+but those columns stay flat, unconstrained text — the three vocabulary
+tables only exist to power Catalog Admin's dropdown menus (`app.py`
+queries them for `<select>` options) and are deliberately excluded from
+CDC (an admin-UI concern, not part of the domain model Kafka consumers
+see). `id_counter` (ID generation bookkeeping) and `seed_log` (admin
+seeding history) are pure operational tables, also untouched by CDC.
+
 ## Bring it up
 
 ```bash
@@ -210,6 +270,40 @@ every state-changing route. Not part of the original architecture diagram —
 added later at the user's request. Every add/edit/delete is a plain write to the
 same `catalog-db` tables the seed script and Debezium already know about, so
 it flows through CDC exactly the same way.
+
+```mermaid
+flowchart TB
+    subgraph App["app.py (Flask, session auth + CSRF)"]
+        direction TB
+        ROUTES["CRUD routes: items / users / genres /<br/>countries+languages - filter, sort, bulk-delete"]
+        SEEDROUTE["Seed Data routes"]
+        FORMS["read_item_form() / read_user_form()<br/>parse_int() / parse_float()<br/>sort_params() (whitelist-checked)"]
+    end
+
+    DB["db.py<br/>get_conn() - fresh psycopg2<br/>connection per request"]
+
+    subgraph Seed["seed_catalog.py (imported by app.py AND the CLI seeder)"]
+        direction TB
+        REALDATA["seed_from_real_data()<br/>Kaggle datasets"]
+        NAMEDSET["seed_from_named_set()<br/>checked-in seeds/&lt;name&gt;/ packs"]
+        RANDOM["seed_random_item() / seed_random_user()"]
+        NEXTID["next_id()<br/>reads/increments id_counter"]
+        SEEDGUARD["seed()<br/>raises AlreadySeededError unless<br/>force=True; logs to seed_log"]
+    end
+
+    ROUTES --> FORMS --> DB
+    SEEDROUTE --> Seed
+    Seed --> NEXTID
+    Seed --> SEEDGUARD
+    REALDATA & NAMEDSET & RANDOM --> DB
+    DB --> CIDB[("catalog-db (Postgres)")]
+```
+
+`seed_catalog.py` being imported directly by `app.py` (not called as a
+subprocess/CLI) is why `frontend/Dockerfile`'s build context is
+`catalog-input/` rather than `catalog-input/frontend/` — it needs to
+`COPY seed/seed_catalog.py` and `seed/seeds/` into the frontend's own
+image (see `frontend/Dockerfile`).
 
 ```bash
 docker compose up -d catalog-frontend

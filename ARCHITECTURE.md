@@ -96,9 +96,13 @@ SQL instead.
 
 ## Kafka topic catalog
 
-Every topic is namespaced `de.iu.<Entity>.<Version>` and versioned only
-for breaking schema changes (compatible/additive changes stay on the same
-topic).
+Every domain topic is namespaced `de.iu.<Entity>.<Version>` and versioned
+only for breaking schema changes (compatible/additive changes stay on the
+same topic). Two operational topics fall outside that scheme:
+`reporting-rating-sink-dlq`/`reporting-watch-sink-dlq`, the dead-letter
+queues `reporting-rating-sink-connector`/`reporting-watch-sink-connector`
+route a bad record to instead of crashing — see
+`reporting-output/README.md`'s "Connector resilience" section.
 
 | Topic | Type | Key | Written by | Read by |
 |---|---|---|---|---|
