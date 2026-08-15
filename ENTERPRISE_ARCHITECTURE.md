@@ -132,6 +132,7 @@ Confluent Control Center, for `watch-summary-service`'s topology/lag view
   made a given change; per-user accounts and an identity provider fix
   that.
 - **mTLS for Kafka** —see above.
+- **TLS for PostGres and Frontend** https and TLS for Postgress interaction.
 - **Field-level encryption** for `User` PII (age, gender, zip_code) — an
   acknowledged, still-open gap.
 - **Data-at-rest encryption** — Postgres storage and Kafka log segments,
