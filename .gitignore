@@ -17,3 +17,8 @@ state.db
 
 .env
 .claude/
+
+# watch-summary is the one Gradle project in this repo - its own build
+# output/cache, not source.
+watch-summary/build/
+watch-summary/.gradle/

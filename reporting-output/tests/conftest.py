@@ -4,7 +4,9 @@ and reporting-db, all reachable on their host-mapped localhost ports (see
 ../../.env for KAFKA_EXTERNAL_PORT/SCHEMA_REGISTRY_PORT/CONNECT_PORT/
 REPORTING_DB_PORT). Run `docker compose up -d` from the repo root first.
 """
+import importlib.util
 import os
+import pathlib
 import time
 
 import psycopg2
@@ -23,6 +25,36 @@ REPORTING_DB_DSN = os.environ.get(
     "host=localhost port=5433 dbname=reporting user=reporting password=reporting",
 )
 
+# The 10 sql/*/job.py modules build their own PG_DSN from REPORTING_DB_HOST/
+# PORT/NAME/USER/PASSWORD at *import* time (e.g. sql/user-rating-avg/job.py) -
+# a distinct set of env vars from TEST_REPORTING_DB_DSN above, which only
+# this file's own reporting_db fixture uses. Set once here, before
+# test_sql_jobs_integration.py ever calls load_job() below, so every job
+# module resolves to the same host-mapped localhost port everything else in
+# this file already uses.
+os.environ.setdefault("REPORTING_DB_HOST", "localhost")
+os.environ.setdefault("REPORTING_DB_PORT", "5433")
+os.environ.setdefault("REPORTING_DB_NAME", "reporting")
+os.environ.setdefault("REPORTING_DB_USER", "reporting")
+os.environ.setdefault("REPORTING_DB_PASSWORD", "reporting")
+
+SQL_JOBS_DIR = pathlib.Path(__file__).resolve().parent.parent / "sql"
+
+
+def load_job(name):
+    """Imports sql/<name>/job.py (e.g. "user-rating-avg") as its own
+    module, keyed by a unique name - every job file is literally named
+    job.py, so a plain `import job` would collide the moment a second one
+    loaded into sys.modules. A fresh exec_module() per call (not cached)
+    also means it re-reads REPORTING_DB_HOST/etc fresh each time, so a
+    test's monkeypatch.setenv (e.g. overriding TRENDING_WINDOW_MINUTES)
+    takes effect as long as it runs before load_job()."""
+    path = SQL_JOBS_DIR / name / "job.py"
+    spec = importlib.util.spec_from_file_location(f"reporting_job_{name.replace('-', '_')}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 # de.iu.Rating.V002's schemas are hand-authored under client-input/schemas/
 # (client-input is the producer that owns them) - reused here rather than
 # duplicated, the same relationship catalog-input/frontend has with
@@ -37,11 +69,14 @@ def _read_schema(filename):
         return f.read()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def require_live_stack():
-    """Every test in this package is integration-only - fail fast with a
-    clear message instead of a confusing connection-refused deep inside a
-    test if the stack isn't up."""
+    """Fail fast with a clear message instead of a confusing connection-
+    refused deep inside a test if the stack isn't up. Not autouse: only
+    test_connector_dlq_integration.py needs the full stack (Kafka, Schema
+    Registry, Connect) - test_sql_jobs_integration.py only needs
+    reporting-db itself (see require_reporting_db below), and gating it on
+    Connect too would make it fail even when all it actually needs is up."""
     try:
         resp = requests.get(f"{CONNECT_URL}/connectors", timeout=5)
         resp.raise_for_status()
@@ -50,6 +85,24 @@ def require_live_stack():
             f"Kafka Connect not reachable at {CONNECT_URL} - these are integration "
             f"tests and need the real stack. Run `docker compose up -d` from the "
             f"repo root first. ({exc})",
+            returncode=1,
+        )
+
+
+@pytest.fixture(scope="session")
+def require_reporting_db():
+    """test_sql_jobs_integration.py's equivalent of require_live_stack
+    above - reporting-db only, since those tests write straight to
+    items/users/ratings/watch_events and never touch Kafka/Connect at
+    all."""
+    try:
+        conn = psycopg2.connect(REPORTING_DB_DSN, connect_timeout=5)
+        conn.close()
+    except Exception as exc:
+        pytest.exit(
+            f"reporting-db not reachable at {REPORTING_DB_DSN!r} - these are "
+            f"integration tests and need it running. Run `docker compose up -d "
+            f"reporting-db` from the repo root first. ({exc})",
             returncode=1,
         )
 

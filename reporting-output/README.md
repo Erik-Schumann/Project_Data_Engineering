@@ -416,18 +416,36 @@ positive control that a valid record still lands normally).
 
 ```bash
 pip install -r requirements-dev.txt
-docker compose up -d   # from the repo root - these need the real stack
-pytest
+docker compose up -d reporting-db          # test_sql_jobs_integration.py only needs this
+pytest tests/test_sql_jobs_integration.py
+
+docker compose up -d                        # test_connector_dlq_integration.py needs the full stack
+pytest tests/test_connector_dlq_integration.py
+
+pytest                                       # both, once everything above is up
 ```
 
-All of this service's tests are `integration`-marked and need Kafka, Schema
-Registry, Kafka Connect, and `reporting-db` actually running (reachable on
-their host-mapped `localhost` ports - see `.env`), not just a Docker daemon.
-Unlike client-input's `integration` marker (real threads/timing, but still
-faked infra), there's no meaningful way to fake Kafka Connect's own error-
-handling behavior, which is what these tests exist to cover: see
-`tests/test_connector_dlq_integration.py`'s docstring for the incident it's
-a regression test for.
+Every test here is `integration`-marked - there's no unit-testable surface
+the way `client-input`/`catalog-input` have, since the real logic in this
+service lives either in SQL query text or in Kafka Connect's own runtime
+behavior, neither of which is a pure Python function to isolate. But the
+two files need different slices of the stack, gated by separate fixtures
+(`require_reporting_db` vs. `require_live_stack` - see `tests/conftest.py`):
+
+- **`test_sql_jobs_integration.py`** calls each `sql/*/job.py`'s real
+  `run_tick()` directly (via `load_job()`, since all 10 files are
+  literally named `job.py` under hyphenated directories - a plain `import
+  job` would collide) against rows seeded straight into `reporting-db`'s
+  `items`/`users`/`ratings`/`watch_events` - no Kafka/Connect involved at
+  all, since it's a given job's SQL correctness under test (a window
+  filter, a tiebreak rule, a rounding boundary), not the connector
+  pipeline that fills those tables in production.
+- **`test_connector_dlq_integration.py`** needs the full stack (Kafka,
+  Schema Registry, Connect) - unlike `client-input`'s `integration` marker
+  (real threads/timing, but still faked infra), there's no meaningful way
+  to fake Kafka Connect's own error-handling behavior, which is what this
+  file exists to cover: see its own docstring for the incident it's a
+  regression test for.
 
 ## Validation
 

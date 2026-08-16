@@ -161,6 +161,55 @@ Kafka Streams view (topology, per-instance state) is Enterprise-only and
 this stack runs `kpow-ce` (Community Edition), which can't render it —
 see `../ENTERPRISE_ARCHITECTURE.md`'s Observability section.
 
+## Tests
+
+```bash
+gradle test              # fast, no infra - AppTest, TopologyTestDriver + a mock:// schema registry
+gradle integrationTest   # needs the real stack - AppIntegrationTest, a real KafkaStreams instance
+```
+
+Two separate Gradle tasks/source sets, not one - `gradle test`/`gradle build`
+must stay usable with nothing running at all:
+
+- **`gradle test`** (`src/test/java/.../AppTest.java`) drives `App.buildTopology`
+  through `TopologyTestDriver`: in-process, single-threaded, no broker, an
+  isolated in-memory `mock://` schema registry created fresh per test. Covers
+  the actual branch logic - session-windowing on inactivity, "latest
+  `session_ended_at` wins, never merge/count," and suppress emitting exactly
+  once per settled watch - fast enough to run on every change.
+- **`gradle integrationTest`** (`src/integrationTest/java/.../AppIntegrationTest.java`)
+  runs that same topology as a real `KafkaStreams` instance against a real
+  broker and real Schema Registry - **not** a separate, test-only
+  docker-compose file: the project's own `docker-compose.yml`, reachable on
+  its host-mapped `localhost` ports (`KAFKA_EXTERNAL_PORT`/
+  `SCHEMA_REGISTRY_PORT` in `../.env`), the same convention
+  `reporting-output`'s integration tests use (see
+  `../reporting-output/README.md`'s "Tests" section). Bring it up first:
+
+  ```bash
+  docker compose up -d kafka schema-registry kafka-init   # or `docker compose up -d` for the full stack
+  ```
+
+  `kafka-init` matters here, specifically: the broker runs with
+  `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` (see `../docker-compose.yml`), so
+  `de.iu.Watch.Event.V002`/`de.iu.Watch.Summary.V002` have to already exist -
+  a bare `kafka`+`schema-registry` without `kafka-init` fails fast with a
+  clear message telling you what's missing, rather than hanging on a
+  produce/consume against topics nobody created. Each test spins up its own
+  real `KafkaStreams` instance under a fresh, random `application.id` and
+  temp state dir (so it can run alongside a genuinely deployed
+  `watch-summary-service` container on the same broker without colliding
+  consumer groups), produces real Avro `Watch.Event.V002` heartbeats under a
+  random `user_id`/`item_id`, and polls `Watch.Summary.V002` for the
+  matching settled summary - real wall-clock `Thread.sleep`s past the
+  (test-only, 3s) session gap, since a real broker's stream time tracks real
+  record timestamps rather than a driver-controlled clock. Slower than
+  `gradle test` by design (tens of seconds, not milliseconds) - this exists
+  to catch what a synchronous, single-threaded `TopologyTestDriver` run
+  can't: real Avro round-trips through Schema Registry, a real consumer
+  group actually starting up, and session windows closing off real
+  broker-timestamp-driven stream time.
+
 ## Validation
 
 ```bash

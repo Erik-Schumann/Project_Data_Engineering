@@ -22,7 +22,7 @@ import pytest
 
 from conftest import CONNECT_URL, connector_status, topic_total_offset, wait_until
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("require_live_stack")]
 
 CONNECTOR_NAME = "reporting-rating-sink-connector"
 DLQ_TOPIC = "reporting-rating-sink-dlq"

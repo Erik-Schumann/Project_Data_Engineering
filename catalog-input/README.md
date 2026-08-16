@@ -460,6 +460,33 @@ as an ISO-8601 string regardless of this setting; that half is instead
 handled on the `reporting-output` sink connectors via `?stringtype=unspecified`
 on their JDBC connection URL (see `reporting-output/README.md`).
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest -m "not integration"   # fast, no infra - form validation/seed-parsing pure functions
+docker compose up -d catalog-db   # from the repo root - only integration tests need this
+pytest -m integration          # drives app.py's real Flask routes against a real Postgres
+pytest                          # both
+```
+
+`test_app_forms.py`/`test_seed_catalog.py` are pure-function unit tests
+(no DB, no Flask). `test_app_routes.py` is different in kind, not just
+degree: it drives `app.test_client()` against every route family
+(items/users/genres/countries-languages/seed) end to end, against a real
+`catalog-db` — the same "integration means real infra" convention
+`reporting-output`'s tests use (see `../reporting-output/README.md`'s
+"Tests" section), not `client-input`'s "real threads/timing, but still
+faked infra" one. It's not exhaustive per-route coverage (33 routes exist);
+each CRUD family gets representative coverage of its shape, plus dedicated
+tests for the two behaviors unique to this file - genre/country/language
+delete *clearing* references rather than blocking or orphaning them, and
+`/seed/unseed/<key>` only touching rows tagged with that exact source. See
+`tests/conftest.py`'s docstring for the fixtures (a CSRF-disabled test
+client, a session-authenticated variant, a direct DB connection for
+seeding/assertions) and why every test cleans up exactly what it created —
+this is a real, shared `catalog-db`, not a throwaway per-test database.
+
 ## Validating this service
 
 1. **Schema applied**: `docker compose exec catalog-db psql -U catalog -d catalog -c '\dt'` → 3 tables (`item`, `app_user`, `seed_log`).

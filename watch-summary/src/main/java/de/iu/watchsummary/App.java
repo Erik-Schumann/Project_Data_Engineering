@@ -9,6 +9,7 @@ import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.Grouped;
 import org.apache.kafka.streams.kstream.KTable;
@@ -53,7 +54,33 @@ public class App {
         String bootstrap = System.getenv().getOrDefault("KAFKA_BOOTSTRAP", "kafka:29092");
         String schemaRegistryUrl = System.getenv().getOrDefault("SCHEMA_REGISTRY_URL", "http://schema-registry:8081");
         int sessionGapSeconds = Integer.parseInt(System.getenv().getOrDefault("SESSION_GAP_SECONDS", "10"));
+        Path schemasDir = Path.of(SCHEMAS_DIR);
 
+        Topology topology = buildTopology(schemaRegistryUrl, sessionGapSeconds, schemasDir);
+
+        Properties props = new Properties();
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG, "watch-summary-service");
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap);
+        props.put(SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryUrl);
+
+        // No kPow Streams Agent registration here: kPow's Kafka Streams
+        // view (topology, per-instance state, lag) is an Enterprise-only
+        // feature - this stack runs kpow-ce (Community Edition), which
+        // can't render it regardless of client-side wiring. This app is
+        // still visible in kPow as a plain consumer group ("watch-summary-
+        // service") the same way any consumer is - see watch-summary/README.md.
+        KafkaStreams streams = new KafkaStreams(topology, props);
+        Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
+        streams.start();
+    }
+
+    /**
+     * Builds the topology on its own, separate from main()'s env-var
+     * reading and KafkaStreams lifecycle - what AppTest drives directly
+     * with TopologyTestDriver (a mock:// schema registry URL there, a real
+     * one in production).
+     */
+    static Topology buildTopology(String schemaRegistryUrl, int sessionGapSeconds, Path schemasDir) throws IOException {
         Map<String, String> serdeConfig = Map.of(SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryUrl);
 
         // isKey matters here, not just cosmetically: it picks which Schema
@@ -73,8 +100,8 @@ public class App {
         Serde<GenericRecord> watchSummaryValueSerde = new GenericAvroSerde();
         watchSummaryValueSerde.configure(serdeConfig, false);
 
-        Schema summaryKeySchema = loadSchema("de.iu.Watch.Summary.V002-key.avsc");
-        Schema summaryValueSchema = loadSchema("de.iu.Watch.Summary.V002-value.avsc");
+        Schema summaryKeySchema = loadSchema(schemasDir, "de.iu.Watch.Summary.V002-key.avsc");
+        Schema summaryValueSchema = loadSchema(schemasDir, "de.iu.Watch.Summary.V002-value.avsc");
 
         StreamsBuilder builder = new StreamsBuilder();
 
@@ -97,20 +124,7 @@ public class App {
                         toSummaryEvent(latest, summaryValueSchema)))
                 .to(WATCH_SUMMARY_TOPIC, Produced.with(watchSummaryKeySerde, watchSummaryValueSerde));
 
-        Properties props = new Properties();
-        props.put(StreamsConfig.APPLICATION_ID_CONFIG, "watch-summary-service");
-        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap);
-        props.put(SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryUrl);
-
-        // No kPow Streams Agent registration here: kPow's Kafka Streams
-        // view (topology, per-instance state, lag) is an Enterprise-only
-        // feature - this stack runs kpow-ce (Community Edition), which
-        // can't render it regardless of client-side wiring. This app is
-        // still visible in kPow as a plain consumer group ("watch-summary-
-        // service") the same way any consumer is - see watch-summary/README.md.
-        KafkaStreams streams = new KafkaStreams(builder.build(), props);
-        Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
-        streams.start();
+        return builder.build();
     }
 
     private static long eventTimestamp(GenericRecord record) {
@@ -138,8 +152,8 @@ public class App {
         return value;
     }
 
-    private static Schema loadSchema(String filename) throws IOException {
-        String content = Files.readString(Path.of(SCHEMAS_DIR, filename));
+    private static Schema loadSchema(Path schemasDir, String filename) throws IOException {
+        String content = Files.readString(schemasDir.resolve(filename));
         return new Schema.Parser().parse(content);
     }
 }

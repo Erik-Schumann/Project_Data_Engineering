@@ -190,25 +190,24 @@ pressure, or error rates.
 ## CI/CD
 
 **Here**: automated tests exist per-service now (`client-input`: 103
-unit + real-threads/real-SQLite integration tests; `catalog-input`: 134
-unit tests for form validation/seed parsing; `reporting-output`: 3
-integration tests against the live Kafka Connect + Postgres stack,
-regression-testing the DLQ incident above) — but none of it runs in CI,
-only by hand (`pytest`, per each service's own README). Every other
-change (Grafana panels, connector configs, schema) is still validated
-purely by hand — `docker compose up`, check the logs, query Postgres
-directly, look at a Grafana panel.
+unit + real-threads/real-SQLite integration tests; `catalog-input`: 158
+tests — form validation/seed parsing unit tests plus route-level
+integration tests driving every Flask CRUD family end to end against a
+real Postgres; `reporting-output`: 14 integration tests against the live
+stack, split between connector error-handling (regression-testing the DLQ
+incident above) and the 10 scheduled jobs' own SQL aggregation logic —
+window filters, tiebreak rules, threshold boundaries — run against a real
+reporting-db; `watch-summary`: 5 `TopologyTestDriver` unit tests plus 2
+integration tests running the real topology as an actual `KafkaStreams`
+instance against a live broker + Schema Registry) — but none of it runs in
+CI, only by hand (`pytest`/`gradle test`+`gradle integrationTest`, per
+each service's own README). Every other change (Grafana panels, connector
+configs, schema) is still validated purely by hand — `docker compose up`,
+check the logs, query Postgres directly, look at a Grafana panel.
 
 **Enterprise**:
 - **Wire the existing test suites into an actual CI pipeline** — they
   run today, but only when someone remembers to.
-- **Test the reporting SQL jobs' own logic, not just the connector layer**
-  — the 10 scheduled jobs' actual aggregation logic lives in SQL query
-  text executed against Postgres, not isolable pure Python functions, so
-  that's integration tests running each job's real query against an
-  ephemeral Postgres (Testcontainers-style), which doesn't exist yet —
-  `reporting-output`'s current tests cover connector error-handling, not
-  per-job correctness.
 - **End-to-end tests** running the full pipeline against ephemeral
   containers, not the already-running dev stack the current integration
   tests assume.
